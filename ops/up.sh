@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PLUGIN="id_x_003"
-HOST_PORT=8003
+HOST_PORT=8080
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${OPS_DIR}/../../.." && pwd)"
 
@@ -17,10 +17,10 @@ set -a; source "${OPS_DIR}/.env"; set +a
 
 # 2. 构建镜像
 if [ "${1:-}" = "--build" ] || ! podman image exists "${PLUGIN}_service"; then
-    podman build -t "${PLUGIN}_service" -f "${OPS_DIR}/Dockerfile.service" "${REPO_ROOT}"
+    podman build --format docker -t "${PLUGIN}_service" -f "${OPS_DIR}/Dockerfile.service" "${REPO_ROOT}"
 fi
 if [ "${1:-}" = "--build" ] || ! podman image exists "${PLUGIN}_web"; then
-    podman build -t "${PLUGIN}_web" "${OPS_DIR}/../web"
+    podman build --format docker -t "${PLUGIN}_web" "${OPS_DIR}/../web"
 fi
 
 # 3. Pod（已存在则跳过）
@@ -37,11 +37,11 @@ if ! podman container exists "${PLUGIN}_db"; then
         -e POSTGRES_DB="${POSTGRES_DB}" \
         -e POSTGRES_USER="${POSTGRES_USER}" \
         -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
-        -v "${PLUGIN}_db_data:/var/lib/postgresql/data" \
+        -v "${PLUGIN}_db_data:/var/lib/postgresql" \
         -v "${OPS_DIR}/init:/docker-entrypoint-initdb.d:ro" \
         --health-cmd "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" \
         --health-interval 5s --health-retries 10 \
-        postgres:18
+        docker.io/library/postgres:18
 fi
 
 echo "等待 db 就绪..."
@@ -66,8 +66,10 @@ fi
 
 if ! podman container exists "${PLUGIN}_haproxy"; then
     podman run -d --pod "${PLUGIN}" --name "${PLUGIN}_haproxy" \
+        -e SERVICE_HOST=127.0.0.1 \
+        -e WEB_HOST=127.0.0.1 \
         -v "${OPS_DIR}/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" \
-        haproxy:3
+        docker.io/library/haproxy:3.2
 fi
 
 echo "启动完成: http://localhost:${HOST_PORT}"

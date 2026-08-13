@@ -1,7 +1,0 @@
-.env
-__pycache__
-node_modules
-web/node_modules
-web/.next
-x_models/id_x_*
-!x_models/id_x_003
