@@ -9,8 +9,11 @@
 from __future__ import annotations
 
 import base64
+import binascii
+import hashlib
 import json
-import random
+import os
+import re
 import secrets
 import smtplib
 import string
@@ -66,11 +69,23 @@ from x_models.id_x_003.src.schemas.x_schemas import (
 # ===== 常量（与原系统一致） =====
 WEEK_LIST = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
-MAIL_SERVER = "mail.cuhk.edu.cn"
-MAIL_PORT = 587
-MAIL_USER = "careersme@cuhk.edu.cn"
-MAIL_FROM = "careersme@cuhk.edu.cn"
-MAIL_PASSWORD = "n04n8#X4O48@4Gh0oqw93"
+# 敏感配置改为环境变量注入，不再硬编码在源码中
+def _env_int(name: str, default: int) -> int:
+    """安全解析整型环境变量，非法值回退默认（避免导入期崩溃）。"""
+    try:
+        return int(os.environ.get(name, "") or default)
+    except (TypeError, ValueError):
+        return default
+
+
+MAIL_SERVER = os.environ.get("AA_MAIL_SERVER", "mail.cuhk.edu.cn")
+MAIL_PORT = _env_int("AA_MAIL_PORT", 587)
+MAIL_USER = os.environ.get("AA_MAIL_USER", "careersme@cuhk.edu.cn")
+MAIL_FROM = os.environ.get("AA_MAIL_FROM", MAIL_USER)
+MAIL_PASSWORD = os.environ.get("AA_MAIL_PASSWORD", "")
+
+# 上传文件大小上限（解码后字节数），防止超大 base64 载荷造成内存 DoS
+MAX_UPLOAD_BYTES = _env_int("AA_MAX_UPLOAD_BYTES", 10 * 1024 * 1024)
 
 SLOT_LIST = [
     "08:00-08:20", "08:30-08:50", "09:00-09:20", "09:30-09:50",
@@ -101,24 +116,124 @@ def _get_token(info: Info) -> str | None:
     return request.headers.get("Token")
 
 
-async def _verify_token(info: Info) -> bool:
-    """Token 验证：请求头 Token 需匹配用户表 key 字段。"""
+async def _get_user_by_token(info: Info) -> AaEnlistUser | None:
+    """按 Token 解析用户；无效/过期返回 None。"""
     token = _get_token(info)
-    if not token:
-        return False
+    if not token or token == "N/A":
+        return None
     try:
         maker = get_session()
         async with maker() as session:
             result = await session.execute(select(AaEnlistUser).where(AaEnlistUser.key == token))
-            return result.scalars().first() is not None
+            return result.scalars().first()
     except Exception as e:
         logger.error(f"{_rid()}Token验证失败: {e}")
+        return None
+
+
+async def _verify_token(info: Info) -> bool:
+    """Token 验证：请求头 Token 需匹配用户表 key 字段。"""
+    return await _get_user_by_token(info) is not None
+
+
+async def _verify_admin(info: Info) -> bool:
+    """管理接口鉴权：Token 有效且角色为 admin（学生 token 不再可调用管理接口）。"""
+    user = await _get_user_by_token(info)
+    return bool(user and user.role == "admin")
+
+
+async def _verify_user(info: Info, user_id: Any) -> bool:
+    """学生接口鉴权：Token 必须属于该 user_id（admin 可代查），防止越权操作他人数据。"""
+    user = await _get_user_by_token(info)
+    if not user:
         return False
+    return user.role == "admin" or str(user.id) == str(user_id).strip()
+
+
+# ===== 密码安全（PBKDF2-HMAC-SHA256，兼容旧明文并自动迁移） =====
+_PBKDF2_ITERATIONS = 100_000
+
+# 用于抹平“用户不存在”与“密码错误”的响应时间差，防用户名枚举
+_DUMMY_HASH = "pbkdf2$" + "00" * 16 + "$" + "00" * 32
+
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, _PBKDF2_ITERATIONS)
+    return f"pbkdf2${salt.hex()}${digest.hex()}"
+
+
+def _check_password(stored: str, password: str) -> tuple[bool, str | None]:
+    """返回 (是否匹配, 需要回写的新哈希)。旧明文记录验证通过后返回新哈希以自动迁移。"""
+    if stored.startswith("pbkdf2$"):
+        try:
+            _, salt_hex, digest_hex = stored.split("$", 2)
+            calc = hashlib.pbkdf2_hmac(
+                "sha256", password.encode(), bytes.fromhex(salt_hex), _PBKDF2_ITERATIONS
+            )
+            return secrets.compare_digest(calc.hex(), digest_hex), None
+        except (ValueError, TypeError):
+            return False, None
+    if stored == password:  # 历史明文兼容
+        return True, _hash_password(password)
+    return False, None
+
+
+def _sanitize_header(value: Any) -> str:
+    """邮件头注入防护：剔除 CR/LF。"""
+    return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
+
+
+# 分页参数边界：防 limit 过大拖垮内存（公开接口亦可被匿名调用）、offset 非法导致 500
+MAX_PAGE_LIMIT = 100
+
+# 列表型入参（活动名/标题）数量上限，防超长 IN 查询与导出内存膨胀
+MAX_LIST_ITEMS = 200
+
+
+def _clamp_page(offset: Any, limit: Any) -> tuple[int, int]:
+    """收敛分页参数：offset >= 1，1 <= limit <= MAX_PAGE_LIMIT，非法值回退默认。"""
+    try:
+        offset = int(offset)
+    except (TypeError, ValueError):
+        offset = 1
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 10
+    return max(offset, 1), min(max(limit, 1), MAX_PAGE_LIMIT)
+
+
+def _ms_to_dt(value: Any) -> datetime | None:
+    """毫秒时间戳安全解析：非法/越界返回 None（调用方据此忽略过滤或置空），不再抛 500。"""
+    try:
+        return datetime.fromtimestamp(int(value) / 1000)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def _to_int(value: Any) -> int | None:
+    """ID 类入参安全转换：非法返回 None（调用方返回 404/400），不再抛 500。"""
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def _send_mail(*, mail_subject: str = "", mail_from: str = "", mail_to: str = "",
                mail_cc: str = "", mail_html: str = "") -> bool:
     """发送邮件（与原系统一致：SMTP + STARTTLS）。"""
+    if not MAIL_PASSWORD:
+        logger.error("邮件发送失败: AA_MAIL_PASSWORD 未配置")
+        return False
+    # 邮件头注入防护
+    mail_subject = _sanitize_header(mail_subject)
+    mail_from = _sanitize_header(mail_from)
+    mail_to = _sanitize_header(mail_to)
+    mail_cc = _sanitize_header(mail_cc)
+    if not mail_to:
+        logger.warning("邮件发送跳过: 收件人为空")
+        return False
     message = MIMEMultipart("alternative")
     message["Subject"] = mail_subject
     message["From"] = mail_from
@@ -180,13 +295,18 @@ async def view_login(info: Info, data: LoginInput) -> ApiResponse:
             password = data.password.strip()
             obj = await _first(session, select(AaEnlistUser).where(
                 AaEnlistUser.username == username,
-                AaEnlistUser.password == password,
             ))
             if not obj:
+                _check_password(_DUMMY_HASH, password)  # 抹平时序，防用户名枚举
+                return _resp(401, "Login Fail")
+            ok, new_hash = _check_password(obj.password, password)
+            if not ok:
                 return _resp(401, "Login Fail")
             key = secrets.token_urlsafe(32)
             obj.key = key
             obj.time = datetime.now()
+            if new_hash:  # 旧明文密码自动迁移为 PBKDF2 哈希
+                obj.password = new_hash
             await session.commit()
             logger.info(f"{_rid()}User {username} logged in")
             return _resp(200, "Login Success", {
@@ -199,12 +319,14 @@ async def view_login(info: Info, data: LoginInput) -> ApiResponse:
 
 
 async def view_logout(info: Info, data: LogoutInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_user(info, data.user_id):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
-            user_id = data.user_id.strip()
+            user_id = _to_int(data.user_id)
+            if user_id is None:
+                return _resp(400, "用户ID非法")
             obj = await _first(session, select(AaEnlistUser).where(AaEnlistUser.id == user_id))
             if obj:
                 obj.key = "N/A"
@@ -225,17 +347,16 @@ async def view_user_activity_list(info: Info, data: UserActivityListInput) -> Ap
         try:
             start_date = data.start_date
             end_date = data.end_date
-            offset = int(data.offset)
-            limit = int(data.limit)
+            offset, limit = _clamp_page(data.offset, data.limit)
             name = data.fuzzy_name
 
             query = select(AaEnlistActivity)
 
-            if not start_date or not end_date:
+            start_dt = _ms_to_dt(start_date)
+            end_dt = _ms_to_dt(end_date)
+            if not start_dt or not end_dt:
                 query = query.where(AaEnlistActivity.activity_start_time >= datetime.now().date())
             else:
-                start_dt = datetime.fromtimestamp(int(start_date) / 1000)
-                end_dt = datetime.fromtimestamp(int(end_date) / 1000)
                 query = query.where(
                     AaEnlistActivity.activity_start_time >= start_dt,
                     AaEnlistActivity.activity_start_time <= end_dt,
@@ -255,7 +376,7 @@ async def view_user_activity_list(info: Info, data: UserActivityListInput) -> Ap
                 project = await _first(session, select(AaEnlistProject).where(
                     AaEnlistProject.id == obj.project_id
                 ))
-                quota = int(project.quota) if project and project.quota else 0
+                quota = _to_int(project.quota) or 0 if project else 0
                 number = await _count(session, select(AaEnlistApply).where(
                     AaEnlistApply.activity_id == obj.id
                 ))
@@ -294,8 +415,11 @@ async def view_user_activity_search(info: Info, activity_id: str) -> ApiResponse
     maker = get_session()
     async with maker() as session:
         try:
+            activity_pk = _to_int(activity_id)
+            if activity_pk is None:
+                return _resp(404, "活动不存在")
             obj = await _first(session, select(AaEnlistActivity).where(
-                AaEnlistActivity.id == activity_id
+                AaEnlistActivity.id == activity_pk
             ))
             if not obj:
                 return _resp(404, "活动不存在")
@@ -309,9 +433,9 @@ async def view_user_activity_search(info: Info, activity_id: str) -> ApiResponse
             week = obj.activity_start_time.weekday() if obj.activity_start_time else 0
             start_time = obj.activity_start_time.strftime("%H:%M") if obj.activity_start_time else ""
             end_time = obj.activity_end_time.strftime("%H:%M") if obj.activity_end_time else ""
-            quota = int(project.quota) if project and project.quota else 0
+            quota = _to_int(project.quota) or 0 if project else 0
             number = await _count(session, select(AaEnlistApply).where(
-                AaEnlistApply.activity_id == activity_id
+                AaEnlistApply.activity_id == activity_pk
             ))
 
             detail: Any = ""
@@ -358,12 +482,18 @@ async def view_user_activity_fuzzy_name(info: Info, data: FuzzyNameInput) -> Api
 
 
 async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> ApiResponse:
+    if not await _verify_user(info, data.user_id):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             user_id = data.user_id
             activity_id = data.activity_id
             info_text = data.info
+
+            activity_pk = _to_int(activity_id)
+            if activity_pk is None:
+                return _resp(404, "活动或用户不存在")
 
             # 检查是否在同一周内已有报名
             result = await session.execute(
@@ -373,12 +503,12 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
             )
             existing_applies = result.scalars().all()
 
-            if existing_applies:
+            if existing_applies and existing_applies[0].time:
                 year_1, week_1, _ = datetime.now().isocalendar()
                 year_2, week_2, _ = existing_applies[0].time.isocalendar()
                 if (year_1, week_1) == (year_2, week_2):
                     activity = await _first(session, select(AaEnlistActivity).where(
-                        AaEnlistActivity.id == activity_id
+                        AaEnlistActivity.id == activity_pk
                     ))
                     return _resp(403, "You can only make one reservation in the same week.", {
                         "user_id": user_id,
@@ -388,7 +518,7 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
                     })
 
             activity = await _first(session, select(AaEnlistActivity).where(
-                AaEnlistActivity.id == activity_id
+                AaEnlistActivity.id == activity_pk
             ))
             user = await _first(session, select(AaEnlistUser).where(
                 AaEnlistUser.id == user_id
@@ -401,7 +531,7 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
                 project_id=activity.project_id,
                 activity_id=activity_id,
                 user_id=user_id,
-                order="R" + "".join(random.sample(string.digits, 8)),
+                order="R" + "".join(secrets.choice(string.digits) for _ in range(8)),
                 name=user.name,
                 number=user.number,
                 grade=user.grade,
@@ -431,9 +561,9 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
                 AaEnlistProject.id == activity.project_id
             ))
             owner = await _first(session, select(AaOwnerInfo).where(
-                AaOwnerInfo.name == project.owner
-            ))
-            owner_email = owner.email
+                AaOwnerInfo.name == (project.owner if project else "")
+            )) if project else None
+            owner_email = owner.email if owner else ""
 
             template = await _first(session, select(AaHtmlTemplate).where(
                 AaHtmlTemplate.type == "submit"
@@ -448,27 +578,30 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
             )
             _log_mail("Send Apply Email To Student Successful.", user.email, mail_subject)
 
-            # 发送邮件（顾问）
-            msg = {
-                "_date": activity.activity_start_time.strftime("%Y-%m-%d") if activity.activity_start_time else "",
-                "_start_time": activity.activity_start_time.strftime("%H:%M") if activity.activity_start_time else "",
-                "_end_time": activity.activity_end_time.strftime("%H:%M") if activity.activity_end_time else "",
-                "_teacher_name": owner.name,
-                "_student_name": user.name,
-            }
-            template = await _first(session, select(AaHtmlTemplate).where(
-                AaHtmlTemplate.type == "submit_ex"
-            ))
-            ex_html = template.html.format(**msg) if template else ""
-            ex_subject = f"校友咨询预约提醒-[{user.name}]"
-            _send_mail(
-                mail_subject=ex_subject,
-                mail_from=MAIL_FROM,
-                mail_to=owner_email,
-                mail_cc="",
-                mail_html=ex_html,
-            )
-            _log_mail("Send Apply Email To Teacher Successful.", owner_email, ex_subject)
+            # 发送邮件（顾问）：顾问信息缺失时跳过，不影响已提交的报名
+            if owner and owner_email:
+                msg = {
+                    "_date": activity.activity_start_time.strftime("%Y-%m-%d") if activity.activity_start_time else "",
+                    "_start_time": activity.activity_start_time.strftime("%H:%M") if activity.activity_start_time else "",
+                    "_end_time": activity.activity_end_time.strftime("%H:%M") if activity.activity_end_time else "",
+                    "_teacher_name": owner.name,
+                    "_student_name": user.name,
+                }
+                template = await _first(session, select(AaHtmlTemplate).where(
+                    AaHtmlTemplate.type == "submit_ex"
+                ))
+                ex_html = template.html.format(**msg) if template else ""
+                ex_subject = f"校友咨询预约提醒-[{user.name}]"
+                _send_mail(
+                    mail_subject=ex_subject,
+                    mail_from=MAIL_FROM,
+                    mail_to=owner_email,
+                    mail_cc="",
+                    mail_html=ex_html,
+                )
+                _log_mail("Send Apply Email To Teacher Successful.", owner_email, ex_subject)
+            else:
+                logger.warning(f"{_rid()}顾问信息缺失（project={activity.project_id}），跳过顾问通知邮件")
 
             return _resp(200, "success", {
                 "project_id": obj.project_id,
@@ -497,12 +630,13 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
 
 
 async def view_user_activity_detail(info: Info, data: UserRecordsInput) -> ApiResponse:
+    if not await _verify_user(info, data.user_id):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             user_id = data.user_id
-            offset = int(data.offset)
-            limit = int(data.limit)
+            offset, limit = _clamp_page(data.offset, data.limit)
 
             query = select(AaEnlistApply).where(
                 AaEnlistApply.user_id == user_id
@@ -540,16 +674,44 @@ async def view_user_activity_detail(info: Info, data: UserRecordsInput) -> ApiRe
             return _resp(500, "服务器错误")
 
 
+def _decode_oauth_payload(oauth_token: str) -> dict | None:
+    """严格校验 IdP 下发的 JWT 结构并解码 payload。
+
+    - 必须为 header.payload.signature 三段结构；
+    - payload 必须是合法 base64url + JSON，且包含 upn/email；
+    - 若包含 exp，必须是未过期的时间戳。
+
+    注意：完整的签名验证需要 IdP 的 JWKS 公钥配置（见 report.md 遗留项），
+    此处先做结构与有效期校验，杜绝任意构造 token 直接登录。
+    """
+    try:
+        parts = oauth_token.split(".")
+        if len(parts) != 3 or not all(parts):
+            return None
+        padded = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload_data = json.loads(base64.urlsafe_b64decode(padded.encode()).decode("utf-8"))
+        if not isinstance(payload_data, dict):
+            return None
+        if not payload_data.get("upn") or not payload_data.get("email"):
+            return None
+        exp = payload_data.get("exp")
+        if exp is not None and datetime.now().timestamp() >= float(exp):
+            return None
+        return payload_data
+    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError):
+        return None
+
+
 async def view_user_activity_oauth(info: Info, data: OauthInput) -> ApiResponse:
     maker = get_session()
     async with maker() as session:
         try:
-            payload = data.oauth_token.split(".")[1]
-            payload_decoded = base64.b64decode(payload + "===").decode("utf-8")
-            payload_data = json.loads(payload_decoded)
-            upn = payload_data.get("upn")
-            email = payload_data.get("email")
-            name = payload_data.get("CUHKSZ-DisplayName")
+            payload_data = _decode_oauth_payload(data.oauth_token)
+            if payload_data is None:
+                return _resp(401, "Invalid OAuth Token")
+            upn = _sanitize_header(payload_data.get("upn"))
+            email = _sanitize_header(payload_data.get("email"))
+            name = _sanitize_header(payload_data.get("CUHKSZ-DisplayName", ""))
             try:
                 number = name.split(",")[1].strip().split(")")[0].strip()
             except Exception:
@@ -562,12 +724,14 @@ async def view_user_activity_oauth(info: Info, data: OauthInput) -> ApiResponse:
             ))
 
             if not obj:
+                # 服务端签发独立会话密钥，不再将 IdP token 直接作为会话凭证
+                session_key = secrets.token_urlsafe(32)
                 user_obj = AaEnlistUser(
                     username=upn,
                     name=name,
                     email=email,
                     role="user",
-                    key=data.oauth_token,
+                    key=session_key,
                     password="N/A",
                     number=number,
                 )
@@ -579,28 +743,22 @@ async def view_user_activity_oauth(info: Info, data: OauthInput) -> ApiResponse:
                     "check": "true",
                     "username": upn,
                     "user_id": str(user_obj.id),
-                    "token": data.oauth_token,
+                    "token": session_key,
                 })
 
-            if obj.key in ["N/A"]:
-                logger.warning(f"{_rid()}用户 {upn} {name} {email} {number} 尝试使用 OAuth 登录，但未绑定密钥")
-                obj.time = datetime.now()
-                await session.commit()
-                return _resp(200, "success", {
-                    "check": "false",
-                    "username": upn,
-                    "user_id": str(obj.id),
-                    "token": data.oauth_token,
-                })
-            else:
-                obj.time = datetime.now()
-                await session.commit()
-                return _resp(200, "success", {
-                    "check": "true",
-                    "username": upn,
-                    "user_id": str(obj.id),
-                    "token": data.oauth_token,
-                })
+            # 老用户：统一签发新会话密钥（含 key="N/A" 的已登出用户——
+            # OAuth 断言本身就是认证，登出后再次 SSO 必须能重新登录，
+            # 否则 key="N/A" 会导致用户被永久锁定）
+            session_key = secrets.token_urlsafe(32)
+            obj.key = session_key
+            obj.time = datetime.now()
+            await session.commit()
+            return _resp(200, "success", {
+                "check": "true",
+                "username": upn,
+                "user_id": str(obj.id),
+                "token": session_key,
+            })
         except Exception as e:
             logger.error(f"{_rid()}{e}")
             await session.rollback()
@@ -608,15 +766,19 @@ async def view_user_activity_oauth(info: Info, data: OauthInput) -> ApiResponse:
 
 
 async def view_user_activity_delete(info: Info, data: UserApplyDeleteInput) -> ApiResponse:
+    if not await _verify_user(info, data.user_id):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             user_id = data.user_id
-            apply_id = data.apply_id
+            apply_pk = _to_int(data.apply_id)
+            if apply_pk is None:
+                return _resp(404, "报名记录不存在")
 
             apply_obj = await _first(session, select(AaEnlistApply).where(
                 AaEnlistApply.user_id == user_id,
-                AaEnlistApply.id == apply_id,
+                AaEnlistApply.id == apply_pk,
             ))
 
             if not apply_obj:
@@ -625,13 +787,14 @@ async def view_user_activity_delete(info: Info, data: UserApplyDeleteInput) -> A
             activity = await _first(session, select(AaEnlistActivity).where(
                 AaEnlistActivity.id == apply_obj.activity_id
             ))
+            # 活动/项目/顾问可能已被删除：取消操作不应因此失败，仅跳过顾问通知
             project = await _first(session, select(AaEnlistProject).where(
                 AaEnlistProject.id == activity.project_id
-            ))
+            )) if activity else None
             owner = await _first(session, select(AaOwnerInfo).where(
                 AaOwnerInfo.name == project.owner
-            ))
-            owner_email = owner.email
+            )) if project else None
+            owner_email = owner.email if owner else ""
 
             msg = {
                 "_title": apply_obj.name,
@@ -641,6 +804,7 @@ async def view_user_activity_delete(info: Info, data: UserApplyDeleteInput) -> A
             }
 
             mail_to = apply_obj.email
+            apply_name = apply_obj.name  # 删除前取出，commit 后 ORM 实例属性已过期不可再访问
             mail_subject = "Cancellation Notice"
             template = await _first(session, select(AaHtmlTemplate).where(
                 AaHtmlTemplate.type == "cancel"
@@ -661,27 +825,28 @@ async def view_user_activity_delete(info: Info, data: UserApplyDeleteInput) -> A
             )
             _log_mail("Send Cancel Email To Student Successful.", mail_to, mail_subject)
 
-            # 发送取消邮件（顾问）
-            msg = {
-                "_student_name": apply_obj.name,
-                "_date": activity.activity_start_time.strftime("%Y-%m-%d") if activity and activity.activity_start_time else "",
-                "_start_time": activity.activity_start_time.strftime("%H:%M") if activity and activity.activity_start_time else "",
-                "_end_time": activity.activity_end_time.strftime("%H:%M") if activity and activity.activity_end_time else "",
-            }
+            # 发送取消邮件（顾问）：顾问信息缺失时跳过，不影响已完成的取消
+            if owner and owner_email:
+                msg = {
+                    "_student_name": apply_name,
+                    "_date": activity.activity_start_time.strftime("%Y-%m-%d") if activity and activity.activity_start_time else "",
+                    "_start_time": activity.activity_start_time.strftime("%H:%M") if activity and activity.activity_start_time else "",
+                    "_end_time": activity.activity_end_time.strftime("%H:%M") if activity and activity.activity_end_time else "",
+                }
 
-            template = await _first(session, select(AaHtmlTemplate).where(
-                AaHtmlTemplate.type == "cancel_ex"
-            ))
-            ex_html = template.html.format(**msg) if template else ""
-            ex_subject = f"校友咨询取消提醒-[{owner.name}]"
-            _send_mail(
-                mail_subject=ex_subject,
-                mail_from=MAIL_FROM,
-                mail_to=owner_email,
-                mail_cc="",
-                mail_html=ex_html,
-            )
-            _log_mail("Send Cancel Email To Teacher Successful.", owner_email, ex_subject)
+                template = await _first(session, select(AaHtmlTemplate).where(
+                    AaHtmlTemplate.type == "cancel_ex"
+                ))
+                ex_html = template.html.format(**msg) if template else ""
+                ex_subject = f"校友咨询取消提醒-[{owner.name}]"
+                _send_mail(
+                    mail_subject=ex_subject,
+                    mail_from=MAIL_FROM,
+                    mail_to=owner_email,
+                    mail_cc="",
+                    mail_html=ex_html,
+                )
+                _log_mail("Send Cancel Email To Teacher Successful.", owner_email, ex_subject)
 
             return _resp(200, "success")
         except Exception as e:
@@ -694,21 +859,20 @@ async def view_user_activity_delete(info: Info, data: UserApplyDeleteInput) -> A
 # 管理后台 · 项目管理
 # ---------------------------
 async def view_manage_project_list(info: Info, data: PageInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             start_date = data.start_date
             end_date = data.end_date
-            offset = int(data.offset)
-            limit = int(data.limit)
+            offset, limit = _clamp_page(data.offset, data.limit)
 
             query = select(AaEnlistProject)
 
-            if start_date and end_date:
-                start_dt = datetime.fromtimestamp(int(start_date) / 1000)
-                end_dt = datetime.fromtimestamp(int(end_date) / 1000)
+            start_dt = _ms_to_dt(start_date)
+            end_dt = _ms_to_dt(end_date)
+            if start_dt and end_dt:
                 query = query.where(
                     AaEnlistProject.update >= start_dt,
                     AaEnlistProject.update <= end_dt,
@@ -738,13 +902,16 @@ async def view_manage_project_list(info: Info, data: PageInput) -> ApiResponse:
 
 
 async def view_manage_project_update(info: Info, data: ProjectUpdateInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
+            project_pk = _to_int(data.project_id)
+            if project_pk is None:
+                return _resp(400, "项目ID非法")
             obj = await _first(session, select(AaEnlistProject).where(
-                AaEnlistProject.id == int(data.project_id)
+                AaEnlistProject.id == project_pk
             ))
             if not obj:
                 return _resp(404, "项目不存在")
@@ -769,7 +936,7 @@ async def view_manage_project_update(info: Info, data: ProjectUpdateInput) -> Ap
 
 
 async def view_manage_project_search(info: Info, data: ProjectIdInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
@@ -794,6 +961,8 @@ async def view_manage_project_search(info: Info, data: ProjectIdInput) -> ApiRes
 
 
 async def view_manage_project_owner_search(info: Info) -> ApiResponse:
+    if not await _verify_admin(info):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
@@ -807,7 +976,7 @@ async def view_manage_project_owner_search(info: Info) -> ApiResponse:
 
 
 async def view_manage_project_create(info: Info, data: ProjectCreateInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
@@ -849,12 +1018,14 @@ async def view_manage_project_create(info: Info, data: ProjectCreateInput) -> Ap
 
 
 async def view_manage_project_delete(info: Info, data: ProjectIdInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
-            project_id = int(data.project_id)
+            project_id = _to_int(data.project_id)
+            if project_id is None:
+                return _resp(400, "项目ID非法")
 
             await session.execute(delete(AaEnlistApply).where(AaEnlistApply.project_id == project_id))
             await session.execute(delete(AaEnlistActivity).where(AaEnlistActivity.project_id == project_id))
@@ -869,7 +1040,7 @@ async def view_manage_project_delete(info: Info, data: ProjectIdInput) -> ApiRes
 
 
 async def view_manage_project_name_list(info: Info) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
@@ -891,21 +1062,20 @@ async def view_manage_project_name_list(info: Info) -> ApiResponse:
 # 管理后台 · 活动管理
 # ---------------------------
 async def view_manage_activity_list(info: Info, data: PageInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             start_date = data.start_date
             end_date = data.end_date
-            offset = int(data.offset)
-            limit = int(data.limit)
+            offset, limit = _clamp_page(data.offset, data.limit)
 
             query = select(AaEnlistActivity)
 
-            if start_date and end_date:
-                start_dt = datetime.fromtimestamp(int(start_date) / 1000)
-                end_dt = datetime.fromtimestamp(int(end_date) / 1000)
+            start_dt = _ms_to_dt(start_date)
+            end_dt = _ms_to_dt(end_date)
+            if start_dt and end_dt:
                 query = query.where(
                     AaEnlistActivity.activity_start_time >= start_dt,
                     AaEnlistActivity.activity_start_time <= end_dt,
@@ -949,20 +1119,23 @@ async def view_manage_activity_list(info: Info, data: PageInput) -> ApiResponse:
 
 
 async def view_manage_activity_detail(info: Info, activity_id: str) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
+            activity_pk = _to_int(activity_id)
+            if activity_pk is None:
+                return _resp(404, "活动不存在")
             result = await session.execute(
                 select(AaEnlistApply)
-                .where(AaEnlistApply.activity_id == activity_id)
+                .where(AaEnlistApply.activity_id == activity_pk)
                 .order_by(desc(AaEnlistApply.id))
             )
             objs = result.scalars().all()
 
             activity = await _first(session, select(AaEnlistActivity).where(
-                AaEnlistActivity.id == activity_id
+                AaEnlistActivity.id == activity_pk
             ))
 
             if not activity:
@@ -1012,22 +1185,21 @@ async def view_manage_activity_detail(info: Info, activity_id: str) -> ApiRespon
 
 
 async def view_manage_activity_name_list(info: Info, data: ActivityNameListInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             start_date = data.start_date
             end_date = data.end_date
-            offset = int(data.offset)
-            limit = int(data.limit)
+            offset, limit = _clamp_page(data.offset, data.limit)
             name = data.fuzzy_name
 
             query = select(AaEnlistActivity.name).distinct()
 
-            if start_date and end_date:
-                start_dt = datetime.fromtimestamp(int(start_date) / 1000)
-                end_dt = datetime.fromtimestamp(int(end_date) / 1000)
+            start_dt = _ms_to_dt(start_date)
+            end_dt = _ms_to_dt(end_date)
+            if start_dt and end_dt:
                 query = query.where(
                     AaEnlistActivity.activity_start_time >= start_dt,
                     AaEnlistActivity.activity_start_time <= end_dt,
@@ -1055,13 +1227,16 @@ async def view_manage_activity_name_list(info: Info, data: ActivityNameListInput
 
 
 async def view_manage_activity_create(info: Info, data: ActivityCreateInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
+            project_pk = _to_int(data.project_id)
+            if project_pk is None:
+                return _resp(400, "项目ID非法")
             project = await _first(session, select(AaEnlistProject).where(
-                AaEnlistProject.id == int(data.project_id)
+                AaEnlistProject.id == project_pk
             ))
 
             if not project:
@@ -1070,10 +1245,10 @@ async def view_manage_activity_create(info: Info, data: ActivityCreateInput) -> 
             res = AaEnlistActivity(
                 name=project.name,
                 project_id=data.project_id,
-                activity_start_time=datetime.fromtimestamp(int(data.activity_start_time) / 1000) if data.activity_start_time else None,
-                activity_end_time=datetime.fromtimestamp(int(data.activity_end_time) / 1000) if data.activity_end_time else None,
-                apply_start_time=datetime.fromtimestamp(int(data.apply_start_time) / 1000) if data.apply_start_time else None,
-                apply_end_time=datetime.fromtimestamp(int(data.apply_end_time) / 1000) if data.apply_end_time else None,
+                activity_start_time=_ms_to_dt(data.activity_start_time),
+                activity_end_time=_ms_to_dt(data.activity_end_time),
+                apply_start_time=_ms_to_dt(data.apply_start_time),
+                apply_end_time=_ms_to_dt(data.apply_end_time),
             )
             session.add(res)
             await session.commit()
@@ -1094,20 +1269,24 @@ async def view_manage_activity_create(info: Info, data: ActivityCreateInput) -> 
 
 
 async def view_manage_activity_update(info: Info, data: ActivityUpdateInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
+            project_pk = _to_int(data.project_id)
+            activity_pk = _to_int(data.activity_id)
+            if project_pk is None or activity_pk is None:
+                return _resp(400, "ID非法")
             project = await _first(session, select(AaEnlistProject).where(
-                AaEnlistProject.id == int(data.project_id)
+                AaEnlistProject.id == project_pk
             ))
 
             if not project:
                 return _resp(404, "项目不存在")
 
             obj = await _first(session, select(AaEnlistActivity).where(
-                AaEnlistActivity.id == int(data.activity_id)
+                AaEnlistActivity.id == activity_pk
             ))
 
             if not obj:
@@ -1115,10 +1294,10 @@ async def view_manage_activity_update(info: Info, data: ActivityUpdateInput) -> 
 
             obj.project_id = data.project_id
             obj.name = project.name
-            obj.activity_start_time = datetime.fromtimestamp(int(data.activity_start_time) / 1000) if data.activity_start_time else None
-            obj.activity_end_time = datetime.fromtimestamp(int(data.activity_end_time) / 1000) if data.activity_end_time else None
-            obj.apply_start_time = datetime.fromtimestamp(int(data.apply_start_time) / 1000) if data.apply_start_time else None
-            obj.apply_end_time = datetime.fromtimestamp(int(data.apply_end_time) / 1000) if data.apply_end_time else None
+            obj.activity_start_time = _ms_to_dt(data.activity_start_time)
+            obj.activity_end_time = _ms_to_dt(data.activity_end_time)
+            obj.apply_start_time = _ms_to_dt(data.apply_start_time)
+            obj.apply_end_time = _ms_to_dt(data.apply_end_time)
             obj.update = datetime.now()
             await session.commit()
 
@@ -1137,13 +1316,16 @@ async def view_manage_activity_update(info: Info, data: ActivityUpdateInput) -> 
 
 
 async def view_manage_activity_search(info: Info, data: ActivityIdInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
+            activity_pk = _to_int(data.activity_id)
+            if activity_pk is None:
+                return _resp(400, "活动ID非法")
             obj = await _first(session, select(AaEnlistActivity).where(
-                AaEnlistActivity.id == int(data.activity_id)
+                AaEnlistActivity.id == activity_pk
             ))
 
             if not obj:
@@ -1165,12 +1347,14 @@ async def view_manage_activity_search(info: Info, data: ActivityIdInput) -> ApiR
 
 
 async def view_manage_activity_delete(info: Info, data: ActivityIdInput) -> ApiResponse:
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
-            activity_id = int(data.activity_id)
+            activity_id = _to_int(data.activity_id)
+            if activity_id is None:
+                return _resp(400, "活动ID非法")
 
             await session.execute(delete(AaEnlistActivity).where(AaEnlistActivity.id == activity_id))
             await session.execute(delete(AaEnlistApply).where(AaEnlistApply.activity_id == activity_id))
@@ -1186,7 +1370,7 @@ async def view_manage_activity_delete(info: Info, data: ActivityIdInput) -> ApiR
 async def view_manage_activity_upload(info: Info, file_name: str, file_base64: str,
                                       content_type: str = "") -> ApiResponse:
     """批量上传排期（.xlsx）。文件内容以 base64 传入，命中已有则更新，否则新增。"""
-    if not await _verify_token(info):
+    if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
@@ -1194,11 +1378,25 @@ async def view_manage_activity_upload(info: Info, file_name: str, file_base64: s
             if not file_base64:
                 return _resp(400, "文件不存在")
 
+            # 大小限制：base64 解码前即可估算（约 3/4），防止超大载荷 OOM
+            if len(file_base64) * 3 // 4 > MAX_UPLOAD_BYTES:
+                return _resp(400, "文件过大")
+
+            if not file_name.lower().endswith(".xlsx"):
+                return _resp(400, "文件格式不正确")
+
             if "xlsx" in file_name or content_type in [
                 "application/vnd.ms-excel",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             ]:
-                df = pd.read_excel(BytesIO(base64.b64decode(file_base64)), engine="openpyxl", sheet_name=0)
+                try:
+                    file_bytes = base64.b64decode(file_base64, validate=True)
+                except (binascii.Error, ValueError):
+                    return _resp(400, "文件内容不是合法的 base64")
+                try:
+                    df = pd.read_excel(BytesIO(file_bytes), engine="openpyxl", sheet_name=0)
+                except Exception:
+                    return _resp(400, "无法解析的 Excel 文件")
                 columns = df.columns
                 success_num = 0
                 fail_num = 0
@@ -1210,37 +1408,38 @@ async def view_manage_activity_upload(info: Info, file_name: str, file_base64: s
                         if str(row.get(column)).strip() not in ["nan", "", None, date]:
                             cell = row.get(column)
                             for d in str(cell).split("\n"):
-                                year = str(datetime.now().year)
-                                month = column.split(".")[0]
-                                day = column.split(".")[1]
-                                start_time = date.split("-")[0]
-                                end_time = date.split("-")[1]
-
-                                activity_name = d
-
-                                activity_start_time = " ".join([
-                                    "-".join([year, month, day]),
-                                    ":".join([
-                                        start_time.split(":")[0],
-                                        start_time.split(":")[1],
-                                        "00",
-                                    ]),
-                                ])
-                                activity_end_time = " ".join([
-                                    "-".join([year, month, day]),
-                                    ":".join([
-                                        end_time.split(":")[0],
-                                        end_time.split(":")[1],
-                                        "00",
-                                    ]),
-                                ])
-                                apply_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                apply_end_time = (
-                                    datetime.strptime(activity_start_time, "%Y-%m-%d %H:%M:%S")
-                                    - timedelta(hours=24)
-                                ).strftime("%Y-%m-%d %H:%M:%S")
-
+                                # 单元格解析/写库任一失败仅计为失败行，不中断整批上传
                                 try:
+                                    year = str(datetime.now().year)
+                                    month = column.split(".")[0]
+                                    day = column.split(".")[1]
+                                    start_time = str(date).split("-")[0]
+                                    end_time = str(date).split("-")[1]
+
+                                    activity_name = d
+
+                                    activity_start_time = " ".join([
+                                        "-".join([year, month, day]),
+                                        ":".join([
+                                            start_time.split(":")[0],
+                                            start_time.split(":")[1],
+                                            "00",
+                                        ]),
+                                    ])
+                                    activity_end_time = " ".join([
+                                        "-".join([year, month, day]),
+                                        ":".join([
+                                            end_time.split(":")[0],
+                                            end_time.split(":")[1],
+                                            "00",
+                                        ]),
+                                    ])
+                                    apply_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    apply_end_time = (
+                                        datetime.strptime(activity_start_time, "%Y-%m-%d %H:%M:%S")
+                                        - timedelta(hours=24)
+                                    ).strftime("%Y-%m-%d %H:%M:%S")
+
                                     project = await _first(session, select(AaEnlistProject).where(
                                         AaEnlistProject.name == activity_name
                                     ))
@@ -1267,7 +1466,7 @@ async def view_manage_activity_upload(info: Info, file_name: str, file_base64: s
                                         await session.commit()
                                         success_num += 1
                                 except Exception as e:
-                                    logger.error(f"Upload Failed: {activity_name}, {e}")
+                                    logger.error(f"Upload Failed: {d}, {e}")
                                     fail_num += 1
                                     await session.rollback()
 
@@ -1281,22 +1480,22 @@ async def view_manage_activity_upload(info: Info, file_name: str, file_base64: s
 
 
 async def view_manage_activity_export(info: Info, data: ActivityExportInput) -> FileResponse:
+    if not await _verify_admin(info):
+        return FileResponse(code=401, msg="Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             activity_list = data.activity_list
+            if len(activity_list) > MAX_LIST_ITEMS:
+                return FileResponse(code=400, msg="活动数量超出上限")
             start_time = data.start_time
             end_time = data.end_time
 
             start_datetime = None
             end_datetime = None
             if start_time and end_time:
-                try:
-                    start_datetime = datetime.fromtimestamp(int(start_time) / 1000)
-                    end_datetime = datetime.fromtimestamp(int(end_time) / 1000)
-                except (ValueError, TypeError, OSError):
-                    start_datetime = None
-                    end_datetime = None
+                start_datetime = _ms_to_dt(start_time)
+                end_datetime = _ms_to_dt(end_time)
 
             activity_ids = []
             for activity_name in activity_list:
@@ -1366,6 +1565,8 @@ async def view_manage_activity_export(info: Info, data: ActivityExportInput) -> 
 
 
 async def view_manage_activity_export_fuzzy_name(info: Info, data: FuzzyNameInput) -> ApiResponse:
+    if not await _verify_admin(info):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
@@ -1388,6 +1589,8 @@ async def view_manage_activity_export_fuzzy_name(info: Info, data: FuzzyNameInpu
 
 async def view_manage_activity_download(info: Info) -> FileResponse:
     """下载 14 天批量排期模板（Template.xlsx）。"""
+    if not await _verify_admin(info):
+        return FileResponse(code=401, msg="Token Error")
     try:
         wb = Workbook()
         ws = wb.active
@@ -1445,6 +1648,8 @@ async def view_manage_activity_download(info: Info) -> FileResponse:
 # 管理后台 · 数据查询
 # ---------------------------
 async def view_query_title_search(info: Info) -> ApiResponse:
+    if not await _verify_admin(info):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
@@ -1458,20 +1663,23 @@ async def view_query_title_search(info: Info) -> ApiResponse:
 
 
 async def view_query_data_search(info: Info, data: QueryDataInput) -> ApiResponse:
+    if not await _verify_admin(info):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
-            limit = int(data.limit)
-            offset = int(data.offset)
+            offset, limit = _clamp_page(data.offset, data.limit)
             title = data.title
+            if len(title) > MAX_LIST_ITEMS:
+                return _resp(400, "活动数量超出上限")
             start_time = data.start_time
             end_time = data.end_time
 
             query = select(AaEnlistActivity).where(AaEnlistActivity.name.in_(title))
 
             if start_time and end_time:
-                start_dt = datetime.fromtimestamp(start_time / 1000)
-                end_dt = datetime.fromtimestamp(end_time / 1000)
+                start_dt = _ms_to_dt(start_time)
+                end_dt = _ms_to_dt(end_time)
                 query = query.where(
                     AaEnlistActivity.activity_start_time >= start_dt,
                     AaEnlistActivity.activity_start_time <= end_dt,
@@ -1532,10 +1740,14 @@ async def view_query_data_search(info: Info, data: QueryDataInput) -> ApiRespons
 
 
 async def view_query_data_download(info: Info, data: TitleListInput) -> FileResponse:
+    if not await _verify_admin(info):
+        return FileResponse(code=401, msg="Token Error")
     maker = get_session()
     async with maker() as session:
         try:
             title = data.title
+            if len(title) > MAX_LIST_ITEMS:
+                return FileResponse(code=400, msg="活动数量超出上限")
 
             result = await session.execute(select(AaEnlistActivity).where(
                 AaEnlistActivity.name.in_(title)

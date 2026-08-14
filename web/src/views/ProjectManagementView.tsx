@@ -27,6 +27,7 @@ import {
   type AdminProjectCreateReq,
 } from "@/api/admin";
 import { useUserStore } from "@/context/UserContext";
+import { sanitizeHtml } from "@/utils/sanitize";
 import ProjectForm, {
   type ProjectFormRef,
   type ProjectFormValue,
@@ -254,7 +255,7 @@ export default function ProjectManagementView() {
                             <div
                               className="max-w-[400px] truncate"
                               dangerouslySetInnerHTML={{
-                                __html: row.project_content,
+                                __html: sanitizeHtml(row.project_content),
                               }}
                             />
                           </Table.Cell>

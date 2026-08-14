@@ -18,5 +18,5 @@ export default function LogoutView() {
     }
   }, []);
 
-  return <div dangerouslySetInnerHTML={{ __html: "Logout Successful." }} />;
+  return <div>Logout Successful.</div>;
 }

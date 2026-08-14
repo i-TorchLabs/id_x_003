@@ -17,10 +17,16 @@ export default function UserHomeOauth() {
     hashRef.current = window.location.hash
 
     const checkToken = () => {
+      // 防御性解析：hash 中无 access_token 时直接提示，避免 TypeError
+      const match = hashRef.current.match(/#access_token=([^&]+)/)
+      if (!match) {
+        toast.danger('Invalid OAuth response')
+        return
+      }
       post({
         url: userAcitvityOauth,
         data: {
-          oauth_token: hashRef.current.split('#access_token=')[1].split('&token_type=')[0]
+          oauth_token: match[1]
         }
       })
         .then(({ data }: Response) => {

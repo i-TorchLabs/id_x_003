@@ -8,6 +8,7 @@ import {
 } from "react";
 import type Quill from "quill";
 import "quill/dist/quill.snow.css";
+import { sanitizeHtml } from "@/utils/sanitize";
 
 export interface RichTextEditorRef {
   getHtmlContent: () => string;
@@ -70,7 +71,8 @@ const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>(
         return JSON.stringify(quillRef.current?.getContents());
       },
       setContents: (content: string) => {
-        quillRef.current?.clipboard.dangerouslyPasteHTML(content);
+        // 粘贴前消毒，防止存储型 XSS 进入编辑器
+        quillRef.current?.clipboard.dangerouslyPasteHTML(sanitizeHtml(content));
       },
     }));
 

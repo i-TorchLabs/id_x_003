@@ -4,6 +4,7 @@ import { userAcitvityApplyApi, userAcitvitySearchApi, type UserAcitvitySearchRes
 import { useUserStore } from '@/context/UserContext'
 import { Button, Card, Chip, Radio, RadioGroup, toast } from '@heroui/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { sanitizeHtml } from '@/utils/sanitize'
 import { useCallback, useEffect, useState } from 'react'
 
 export default function UserApplyView() {
@@ -69,7 +70,7 @@ export default function UserApplyView() {
       </div>
       <div className="bg-[#fff]">
         <div className="font-bold text-[32px] flex justify-center">{data.activity_name}</div>
-        <div dangerouslySetInnerHTML={{ __html: data.activity_content }} className="p-5"></div>
+        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(data.activity_content) }} className="p-5"></div>
       </div>
       <div className="bg-[#fff] p-2 mt-2 flex items-center gap-2">
         <span className="font-bold">Date</span>

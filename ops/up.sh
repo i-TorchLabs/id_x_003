@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PLUGIN="id_x_003"
-HOST_PORT=8080
+HOST_PORT=8003
 OPS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${OPS_DIR}/../../.." && pwd)"
 
@@ -56,6 +56,7 @@ if ! podman container exists "${PLUGIN}_service"; then
         -e DB_PORT=5432 \
         -e DB_USERNAME="${POSTGRES_USER}" \
         -e DB_PASSWORD="${POSTGRES_PASSWORD}" \
+        -e AA_MAIL_PASSWORD="${AA_MAIL_PASSWORD:-}" \
         -e PROJECT_PATH=/app/i-Torch \
         "${PLUGIN}_service"
 fi
