@@ -80,7 +80,7 @@ export default function QueryManagementView() {
         <Table.ScrollContainer>
           <Table.Content aria-label="data table">
             <Table.Header columns={columns}>
-              {(col) => <Table.Column id={col.id}>{col.name}</Table.Column>}
+              {(col) => <Table.Column id={col.id} isRowHeader={col.id === columns[0].id}>{col.name}</Table.Column>}
             </Table.Header>
             <Table.Body
               items={data.map((row, i) => ({ ...row, __rowId: i }))}
@@ -93,11 +93,11 @@ export default function QueryManagementView() {
               }
             >
               {(row) => (
-                <Table.Row id={row.__rowId}>
-                  {(colId) => (
+                <Table.Row id={row.__rowId} columns={columns}>
+                  {(column: { id: string; name: string }) => (
                     <Table.Cell>
                       {String(
-                        row[colId as unknown as keyof QueryDataSearchRes] ?? ""
+                        row[column.id as keyof QueryDataSearchRes] ?? ""
                       )}
                     </Table.Cell>
                   )}

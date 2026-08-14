@@ -7,19 +7,13 @@ import {
   useState,
 } from "react";
 import {
-  DatePicker,
-  Calendar,
+  Input,
   Label,
   ListBox,
   ListBoxItem,
   Select,
+  TextField,
 } from "@heroui/react";
-import { DateInputGroup } from "@heroui/react/date-input-group";
-import {
-  getLocalTimeZone,
-  parseDateTime,
-  type DateValue,
-} from "@internationalized/date";
 import dayjs from "dayjs";
 import { adminProjectNameListApi } from "@/api/admin";
 
@@ -41,15 +35,16 @@ interface SubjectOption {
   value: string;
 }
 
-const tsToDateValue = (ts: number | undefined): DateValue | null => {
-  if (!ts) return null;
-  const d = dayjs(ts);
-  return parseDateTime(d.format("YYYY-MM-DDTHH:mm"));
+/** 毫秒时间戳 -> datetime-local 输入框值 (yyyy-MM-ddTHH:mm) */
+const tsToInputValue = (ts: number | undefined): string => {
+  if (!ts) return "";
+  return dayjs(ts).format("YYYY-MM-DDTHH:mm");
 };
 
-const dateValueToTs = (value: DateValue | null): number | undefined => {
+/** datetime-local 输入框值 -> 毫秒时间戳 */
+const inputValueToTs = (value: string): number | undefined => {
   if (!value) return undefined;
-  return value.toDate(getLocalTimeZone()).getTime();
+  return dayjs(value).valueOf();
 };
 
 interface ActivityFormProps {
@@ -93,43 +88,17 @@ const ActivityForm = forwardRef<ActivityFormRef, ActivityFormProps>((props, ref)
       | "apply_start_time"
       | "apply_end_time"
   ) => (
-    <DatePicker
+    <TextField
       className="w-full"
-      granularity="minute"
-      value={tsToDateValue(formValue[field])}
+      value={tsToInputValue(formValue[field])}
       onChange={(value) =>
-        setFormValue((prev) => ({ ...prev, [field]: dateValueToTs(value) }))
+        setFormValue((prev) => ({ ...prev, [field]: inputValueToTs(value) }))
       }
+      aria-label={label}
     >
       <Label>{label}</Label>
-      <DatePicker.Trigger>
-        <DateInputGroup>
-          <DateInputGroup.Input>
-            {(segment) => <DateInputGroup.Segment segment={segment} />}
-          </DateInputGroup.Input>
-          <DateInputGroup.Suffix>
-            <DatePicker.TriggerIndicator />
-          </DateInputGroup.Suffix>
-        </DateInputGroup>
-      </DatePicker.Trigger>
-      <DatePicker.Popover>
-        <Calendar aria-label={label}>
-          <Calendar.Header>
-            <Calendar.NavButton slot="previous" />
-            <Calendar.Heading />
-            <Calendar.NavButton slot="next" />
-          </Calendar.Header>
-          <Calendar.Grid>
-            <Calendar.GridHeader>
-              {(day) => <Calendar.HeaderCell>{day}</Calendar.HeaderCell>}
-            </Calendar.GridHeader>
-            <Calendar.GridBody>
-              {(date) => <Calendar.Cell date={date} />}
-            </Calendar.GridBody>
-          </Calendar.Grid>
-        </Calendar>
-      </DatePicker.Popover>
-    </DatePicker>
+      <Input type="datetime-local" placeholder={label} />
+    </TextField>
   );
 
   return (

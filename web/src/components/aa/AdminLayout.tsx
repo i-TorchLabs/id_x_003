@@ -24,7 +24,7 @@ const breadcrumbTitleMap: Record<string, string> = {
 
 const menuOptions = [
   {
-    label: "AA",
+    label: "Home",
     key: "admin",
     icon: IoBookOutline,
     children: [
@@ -45,15 +45,9 @@ function LayoutSider() {
 
   return (
     <aside
-      className="h-screen flex flex-col border-r border-gray-200 bg-white transition-all duration-200"
+      className="h-full flex flex-col border-r border-gray-200 bg-white transition-all duration-200"
       style={{ width: collapsed ? 64 : 200 }}
     >
-      <div
-        className="h-[60px] flex justify-center items-center border-b border-gray-200 overflow-hidden"
-        style={{ backgroundColor: "#763890" }}
-      >
-        <img src="/images/LOGO-2.png" alt="logo" className="max-w-full" />
-      </div>
       <nav className="flex-1 overflow-y-auto py-1">
         {menuOptions.map((group) => (
           <div key={group.key}>
@@ -97,69 +91,79 @@ function LayoutSider() {
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { state, logout } = useUserStore();
+  const { logout } = useUserStore();
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   const segments = pathname.split("/").filter(Boolean);
-  const crumbs: { title: string; path: string }[] = [{ title: "AA", path: BASE }];
+  const crumbs: { title: string; path: string }[] = [{ title: "Home", path: BASE }];
   const lastKey = segments[segments.length - 1];
   if (lastKey && breadcrumbTitleMap[lastKey]) {
     crumbs.push({ title: breadcrumbTitleMap[lastKey], path: pathname });
   }
 
   return (
-    <div className="flex h-screen">
-      <LayoutSider />
-      <div className="flex-1 flex flex-col h-screen min-w-0">
-        <header className="flex justify-between items-center h-[60px] px-5 bg-[#763890] border-b border-gray-200">
-          <span className="font-bold text-white">{state.username}</span>
-          <AlertDialog>
-            <AlertDialog.Trigger>
-              <Button variant="primary" size="sm">
-                <IoExitOutline size={18} />
-                Logout
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Backdrop>
-              <AlertDialog.Container placement="center">
-                <AlertDialog.Dialog>
-                  <AlertDialog.Header>
-                    <AlertDialog.Icon status="warning" />
-                    <AlertDialog.Heading>Tips</AlertDialog.Heading>
-                  </AlertDialog.Header>
-                  <AlertDialog.Body>Are you sure to exist?</AlertDialog.Body>
-                  <AlertDialog.Footer>
-                    <AlertDialog.CloseTrigger>
-                      <Button variant="ghost">Cancle</Button>
-                    </AlertDialog.CloseTrigger>
-                    <AlertDialog.CloseTrigger>
-                      <Button variant="primary" onPress={() => logout()}>
+    <div className="flex flex-col h-screen">
+      {/* 顶部页眉:占满屏幕上方,仅展示 LOGO */}
+      <header className="h-[60px] w-full shrink-0 bg-[#763890] border-b border-gray-200 overflow-hidden">
+        <img src="/images/LOGO-2.png" alt="logo" className="h-full w-auto object-cover" />
+      </header>
+      <div className="flex flex-1 min-h-0">
+        <LayoutSider />
+        <div className="flex-1 flex flex-col h-full min-w-0">
+          <div className="flex items-center justify-between h-[40px] pr-5 shrink-0">
+            <div className="flex items-center px-2 gap-2 text-sm text-gray-600">
+              {crumbs.map((item, index) => (
+                <span key={index} className="flex items-center gap-2">
+                  {index > 0 && <span className="text-gray-400">/</span>}
+                  <span
+                    className={item.path === pathname ? "text-[#763890] font-bold" : "cursor-pointer hover:text-[#763890]"}
+                    onClick={() => {
+                      if (item.path === pathname) return;
+                      router.push(item.path);
+                    }}
+                  >
+                    {item.title}
+                  </span>
+                </span>
+              ))}
+            </div>
+            <AlertDialog isOpen={logoutOpen} onOpenChange={setLogoutOpen}>
+              <AlertDialog.Trigger>
+                <Button variant="primary" size="sm">
+                  <IoExitOutline size={18} />
+                  Logout
+                </Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Backdrop>
+                <AlertDialog.Container placement="center">
+                  <AlertDialog.Dialog className="min-w-[360px]">
+                    <AlertDialog.Header>
+                      <AlertDialog.Icon status="warning" />
+                      <AlertDialog.Heading>Tips</AlertDialog.Heading>
+                    </AlertDialog.Header>
+                    <AlertDialog.Body>Are you sure to exist?</AlertDialog.Body>
+                    <AlertDialog.Footer>
+                      <Button variant="ghost" onPress={() => setLogoutOpen(false)}>
+                        Cancle
+                      </Button>
+                      <Button
+                        variant="primary"
+                        onPress={() => {
+                          setLogoutOpen(false);
+                          logout();
+                        }}
+                      >
                         Confirm
                       </Button>
-                    </AlertDialog.CloseTrigger>
-                  </AlertDialog.Footer>
-                </AlertDialog.Dialog>
-              </AlertDialog.Container>
-            </AlertDialog.Backdrop>
-          </AlertDialog>
-        </header>
-        <div className="flex items-center px-2 h-[40px] gap-2 text-sm">
-          {crumbs.map((item, index) => (
-            <span key={index} className="flex items-center gap-2">
-              {index > 0 && <span className="text-gray-400">/</span>}
-              <span
-                className={item.path === pathname ? "" : "cursor-pointer hover:text-[#763890]"}
-                onClick={() => {
-                  if (item.path === pathname) return;
-                  router.push(item.path);
-                }}
-              >
-                {item.title}
-              </span>
-            </span>
-          ))}
-        </div>
-        <div className="overflow-y-auto p-2 bg-[#f0f2f5]" style={{ height: "calc(100vh - 100px)" }}>
-          {children}
+                    </AlertDialog.Footer>
+                  </AlertDialog.Dialog>
+                </AlertDialog.Container>
+              </AlertDialog.Backdrop>
+            </AlertDialog>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 bg-[#f0f2f5]">
+            {children}
+          </div>
         </div>
       </div>
     </div>

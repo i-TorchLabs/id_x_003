@@ -520,8 +520,11 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
             activity = await _first(session, select(AaEnlistActivity).where(
                 AaEnlistActivity.id == activity_pk
             ))
+            user_pk = _to_int(user_id)
+            if user_pk is None:
+                return _resp(404, "活动或用户不存在")
             user = await _first(session, select(AaEnlistUser).where(
-                AaEnlistUser.id == user_id
+                AaEnlistUser.id == user_pk
             ))
 
             if not activity or not user:
@@ -941,8 +944,11 @@ async def view_manage_project_search(info: Info, data: ProjectIdInput) -> ApiRes
     maker = get_session()
     async with maker() as session:
         try:
+            project_pk = _to_int(data.project_id)
+            if project_pk is None:
+                return _resp(400, "项目ID非法")
             obj = await _first(session, select(AaEnlistProject).where(
-                AaEnlistProject.id == data.project_id
+                AaEnlistProject.id == project_pk
             ))
             if not obj:
                 return _resp(404, "项目不存在")

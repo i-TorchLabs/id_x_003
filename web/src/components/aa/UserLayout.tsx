@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { AlertDialog, Button } from "@heroui/react";
 import { IoExitOutline } from "react-icons/io5";
 import { useUserStore } from "@/context/UserContext";
@@ -12,15 +13,16 @@ interface UserLayoutProps {
 
 export default function UserLayout({ children, title }: UserLayoutProps) {
   const { userlogout } = useUserStore();
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
     <div className="flex flex-col h-screen">
-      <header className="flex justify-between items-center h-[60px] px-5 bg-[#763890] border-b border-gray-200">
-        <div className="h-[60px] flex justify-center items-center overflow-hidden">
-          <img src="/images/LOGO-2.png" alt="logo" className="max-w-full max-h-full" />
+      <header className="flex justify-between items-center h-[60px] pr-5 bg-[#763890] border-b border-gray-200">
+        <div className="h-full flex items-center overflow-hidden">
+          <img src="/images/LOGO-2.png" alt="logo" className="h-full w-auto object-cover" />
         </div>
         <span className="font-bold text-white">{title}</span>
-        <AlertDialog>
+        <AlertDialog isOpen={logoutOpen} onOpenChange={setLogoutOpen}>
           <AlertDialog.Trigger>
             <Button variant="primary" size="sm">
               <IoExitOutline size={18} />
@@ -29,21 +31,25 @@ export default function UserLayout({ children, title }: UserLayoutProps) {
           </AlertDialog.Trigger>
           <AlertDialog.Backdrop>
             <AlertDialog.Container placement="center">
-              <AlertDialog.Dialog>
+              <AlertDialog.Dialog className="min-w-[360px]">
                 <AlertDialog.Header>
                   <AlertDialog.Icon status="warning" />
                   <AlertDialog.Heading>Tips</AlertDialog.Heading>
                 </AlertDialog.Header>
                 <AlertDialog.Body>Are you sure to exist?</AlertDialog.Body>
                 <AlertDialog.Footer>
-                  <AlertDialog.CloseTrigger>
-                    <Button variant="ghost">Cancle</Button>
-                  </AlertDialog.CloseTrigger>
-                  <AlertDialog.CloseTrigger>
-                    <Button variant="primary" onPress={() => userlogout()}>
-                      Confirm
-                    </Button>
-                  </AlertDialog.CloseTrigger>
+                  <Button variant="ghost" onPress={() => setLogoutOpen(false)}>
+                    Cancle
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onPress={() => {
+                      setLogoutOpen(false);
+                      userlogout();
+                    }}
+                  >
+                    Confirm
+                  </Button>
                 </AlertDialog.Footer>
               </AlertDialog.Dialog>
             </AlertDialog.Container>

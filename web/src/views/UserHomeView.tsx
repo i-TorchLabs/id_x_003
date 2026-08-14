@@ -257,14 +257,14 @@ export default function UserHomeView() {
             <Table.ScrollContainer>
               <Table.Content aria-label="data table">
                 <Table.Header columns={columns}>
-                  {(col) => <Table.Column id={col.id}>{col.name}</Table.Column>}
+                  {(col) => <Table.Column id={col.id} isRowHeader={col.id === columns[0].id}>{col.name}</Table.Column>}
                 </Table.Header>
                 <Table.Body
                   items={data}
                   renderEmptyState={() => <div className="p-4 text-center">No Data</div>}
                 >
                   {(row) => (
-                    <Table.Row id={row.activity_id}>
+                    <Table.Row id={row.activity_id} columns={columns}>
                       {(column: { id: string; name: string }) => {
                         switch (column.id) {
                           case 'date':

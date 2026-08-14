@@ -1,7 +1,6 @@
 'use client'
 
-import { post, type Response } from '@/api/http'
-import { userAcitvityOauth } from '@/api/url'
+import { userAcitvityOauthApi } from '@/api/user'
 import { useUserStore, type UserState } from '@/context/UserContext'
 import { SITE_URL } from '@/utils/config'
 import { toast } from '@heroui/react'
@@ -23,13 +22,8 @@ export default function UserHomeOauth() {
         toast.danger('Invalid OAuth response')
         return
       }
-      post({
-        url: userAcitvityOauth,
-        data: {
-          oauth_token: match[1]
-        }
-      })
-        .then(({ data }: Response) => {
+      userAcitvityOauthApi(match[1])
+        .then((data) => {
           userStore
             .saveUser({
               ...data

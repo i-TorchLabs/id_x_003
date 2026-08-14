@@ -4,43 +4,40 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   Button,
-  Calendar,
   Chip,
-  DatePicker,
   Form,
+  Input,
   Label,
   Modal,
   Pagination,
   Table,
+  TextField,
   toast,
 } from "@heroui/react";
-import { DateInputGroup } from "@heroui/react/date-input-group";
-import { getLocalTimeZone, type DateValue } from "@internationalized/date";
-import dayjs from "dayjs";
-import { download } from "@/utils/download";
+import { downloadBase64 } from "@/utils/download";
 import {
   adminActivityListApi,
   adminActivityUpdateApi,
   adminActivitySearchApi,
   adminActivityCreateApi,
   adminActivityDeleteApi,
+  adminActivityDownloadApi,
+  adminActivityUploadApi,
   type AdminActivityListRes,
   type AdminActivityUpdateReq,
   type AdminActivityCreateReq,
 } from "@/api/admin";
-import { adminActivityDownload, baseAddress } from "@/api/url";
-import { post } from "@/api/http";
 import { useUserStore } from "@/context/UserContext";
 import ActivityForm, {
   type ActivityFormRef,
   type ActivityFormValue,
 } from "@/components/aa/ActivityForm";
 
-const dateValueToStr = (value: DateValue | null): string | undefined =>
-  value
-    ? dayjs(value.toDate(getLocalTimeZone())).format("YYYY-MM-DD HH:mm")
-    : undefined;
+/** datetime-local 值 (yyyy-MM-ddTHH:mm) -> 接口格式 (yyyy-MM-dd HH:mm) */
+const dateTimeToStr = (value: string): string | undefined =>
+  value ? value.replace("T", " ") : undefined;
 
+/** 与 Report 页面一致的时间选择器(TextField + datetime-local) */
 function SearchDatePicker({
   label,
   placeholder,
@@ -49,40 +46,16 @@ function SearchDatePicker({
 }: {
   label: string;
   placeholder: string;
-  value: DateValue | null;
-  onChange: (value: DateValue | null) => void;
+  value: string;
+  onChange: (value: string) => void;
 }) {
   return (
-    <DatePicker granularity="minute" value={value} onChange={onChange} aria-label={label}>
-      <Label>{label}</Label>
-      <DatePicker.Trigger>
-        <DateInputGroup>
-          <DateInputGroup.Input aria-label={placeholder}>
-            {(segment) => <DateInputGroup.Segment segment={segment} />}
-          </DateInputGroup.Input>
-          <DateInputGroup.Suffix>
-            <DatePicker.TriggerIndicator />
-          </DateInputGroup.Suffix>
-        </DateInputGroup>
-      </DatePicker.Trigger>
-      <DatePicker.Popover>
-        <Calendar aria-label={label}>
-          <Calendar.Header>
-            <Calendar.NavButton slot="previous" />
-            <Calendar.Heading />
-            <Calendar.NavButton slot="next" />
-          </Calendar.Header>
-          <Calendar.Grid>
-            <Calendar.GridHeader>
-              {(day) => <Calendar.HeaderCell>{day}</Calendar.HeaderCell>}
-            </Calendar.GridHeader>
-            <Calendar.GridBody>
-              {(date) => <Calendar.Cell date={date} />}
-            </Calendar.GridBody>
-          </Calendar.Grid>
-        </Calendar>
-      </DatePicker.Popover>
-    </DatePicker>
+    <TextField value={value} onChange={onChange} aria-label={label}>
+      <div className="flex items-center gap-2">
+        <Label className="shrink-0">{label}</Label>
+        <Input type="datetime-local" placeholder={placeholder} aria-label={placeholder} />
+      </div>
+    </TextField>
   );
 }
 
@@ -96,8 +69,8 @@ export default function ActivityManagementView() {
   const userStore = useUserStore();
 
   const [loading, setLoading] = useState(false);
-  const [startDate, setStartDate] = useState<DateValue | null>(null);
-  const [endDate, setEndDate] = useState<DateValue | null>(null);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [uploadMsg, setUploadMsg] = useState({ success: 0, fail: 0 });
   const [page, setPage] = useState(1);
   const [itemCount, setItemCount] = useState(0);
@@ -123,8 +96,8 @@ export default function ActivityManagementView() {
           user_id: userStore.state.userId,
           offset: pageNo.toString(),
           limit: pageSize.toString(),
-          start_date: dateValueToStr(startDate),
-          end_date: dateValueToStr(endDate),
+          start_date: dateTimeToStr(startDate),
+          end_date: dateTimeToStr(endDate),
         });
         result = res.detail;
         setItemCount(Number(res.total));
@@ -225,18 +198,9 @@ export default function ActivityManagementView() {
   };
 
   const uploadFile = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("user_id", userStore.state.userId);
     try {
-      const res = await post({
-        url: "/manage/activity/upload",
-        data: formData,
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-      setUploadMsg(res.data);
+      const res = await adminActivityUploadApi(file);
+      setUploadMsg(res);
       setPage(1);
       await getData(1);
     } catch (error) {
@@ -244,8 +208,13 @@ export default function ActivityManagementView() {
     }
   };
 
-  const handleDownloadClick = () => {
-    download(`${baseAddress}${adminActivityDownload}`);
+  const handleDownloadClick = async () => {
+    try {
+      const res = await adminActivityDownloadApi();
+      downloadBase64(res.fileName, res.fileBase64);
+    } catch (error) {
+      toast.danger((error as Error).message);
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(itemCount / pageSize));
@@ -266,9 +235,9 @@ export default function ActivityManagementView() {
   return (
     <div>
       <div className="bg-[#fff] mb-2 pb-5">
-        <div className="flex justify-between p-5 pb-0">
+        <div className="flex items-center justify-between p-5">
           <Form
-            className="flex flex-row items-end gap-4"
+            className="flex flex-row flex-wrap items-center gap-4"
             onSubmit={(e) => {
               e.preventDefault();
               handleSearchClick();
@@ -328,16 +297,16 @@ export default function ActivityManagementView() {
         <Table.ScrollContainer>
           <Table.Content aria-label="data table">
             <Table.Header columns={columns}>
-              {(col) => <Table.Column id={col.id}>{col.name}</Table.Column>}
+              {(col) => <Table.Column id={col.id} isRowHeader={col.id === columns[0].id}>{col.name}</Table.Column>}
             </Table.Header>
             <Table.Body
               items={data}
               renderEmptyState={() => <div className="p-4">No data</div>}
             >
               {(row) => (
-                <Table.Row id={row.activity_id}>
-                  {(colId) => {
-                    const colKey = String(colId);
+                <Table.Row id={row.activity_id} columns={columns}>
+                  {(column: { id: string; name: string }) => {
+                    const colKey = column.id;
                     switch (colKey) {
                       case "apply_link":
                         return (
@@ -493,14 +462,18 @@ export default function ActivityManagementView() {
                 Are you sure you want to delete this activity?
               </AlertDialog.Body>
               <AlertDialog.Footer>
-                <AlertDialog.CloseTrigger>
-                  <Button variant="ghost">Cancel</Button>
-                </AlertDialog.CloseTrigger>
-                <AlertDialog.CloseTrigger>
-                  <Button variant="danger" onPress={handleDelete}>
-                    Delete
-                  </Button>
-                </AlertDialog.CloseTrigger>
+                <Button variant="ghost" onPress={() => setDeleteTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onPress={() => {
+                    setDeleteTarget(null);
+                    handleDelete();
+                  }}
+                >
+                  Delete
+                </Button>
               </AlertDialog.Footer>
             </AlertDialog.Dialog>
           </AlertDialog.Container>

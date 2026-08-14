@@ -4,18 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   Button,
-  Calendar,
-  DatePicker,
   Form,
+  Input,
   Label,
   Modal,
   Pagination,
   Table,
+  TextField,
   toast,
 } from "@heroui/react";
-import { DateInputGroup } from "@heroui/react/date-input-group";
-import { getLocalTimeZone, type DateValue } from "@internationalized/date";
-import dayjs from "dayjs";
 import {
   adminProjectCreateApi,
   adminProjectDeleteApi,
@@ -33,11 +30,11 @@ import ProjectForm, {
   type ProjectFormValue,
 } from "@/components/aa/ProjectForm";
 
-const dateValueToStr = (value: DateValue | null): string | undefined =>
-  value
-    ? dayjs(value.toDate(getLocalTimeZone())).format("YYYY-MM-DD HH:mm")
-    : undefined;
+/** datetime-local 值 (yyyy-MM-ddTHH:mm) -> 接口格式 (yyyy-MM-dd HH:mm) */
+const dateTimeToStr = (value: string): string | undefined =>
+  value ? value.replace("T", " ") : undefined;
 
+/** 与 Report 页面一致的时间选择器(TextField + datetime-local) */
 function SearchDatePicker({
   label,
   placeholder,
@@ -46,40 +43,16 @@ function SearchDatePicker({
 }: {
   label: string;
   placeholder: string;
-  value: DateValue | null;
-  onChange: (value: DateValue | null) => void;
+  value: string;
+  onChange: (value: string) => void;
 }) {
   return (
-    <DatePicker granularity="minute" value={value} onChange={onChange} aria-label={label}>
-      <Label>{label}</Label>
-      <DatePicker.Trigger>
-        <DateInputGroup>
-          <DateInputGroup.Input aria-label={placeholder}>
-            {(segment) => <DateInputGroup.Segment segment={segment} />}
-          </DateInputGroup.Input>
-          <DateInputGroup.Suffix>
-            <DatePicker.TriggerIndicator />
-          </DateInputGroup.Suffix>
-        </DateInputGroup>
-      </DatePicker.Trigger>
-      <DatePicker.Popover>
-        <Calendar aria-label={label}>
-          <Calendar.Header>
-            <Calendar.NavButton slot="previous" />
-            <Calendar.Heading />
-            <Calendar.NavButton slot="next" />
-          </Calendar.Header>
-          <Calendar.Grid>
-            <Calendar.GridHeader>
-              {(day) => <Calendar.HeaderCell>{day}</Calendar.HeaderCell>}
-            </Calendar.GridHeader>
-            <Calendar.GridBody>
-              {(date) => <Calendar.Cell date={date} />}
-            </Calendar.GridBody>
-          </Calendar.Grid>
-        </Calendar>
-      </DatePicker.Popover>
-    </DatePicker>
+    <TextField value={value} onChange={onChange} aria-label={label}>
+      <div className="flex items-center gap-2">
+        <Label className="shrink-0">{label}</Label>
+        <Input type="datetime-local" placeholder={placeholder} aria-label={placeholder} />
+      </div>
+    </TextField>
   );
 }
 
@@ -94,8 +67,8 @@ export default function ProjectManagementView() {
   const userStore = useUserStore();
 
   const [loading, setLoading] = useState(false);
-  const [startDate, setStartDate] = useState<DateValue | null>(null);
-  const [endDate, setEndDate] = useState<DateValue | null>(null);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
   const [itemCount, setItemCount] = useState(0);
   const pageSize = 20;
@@ -120,8 +93,8 @@ export default function ProjectManagementView() {
           user_id: userStore.state.userId,
           offset: pageNo.toString(),
           limit: pageSize.toString(),
-          start_date: dateValueToStr(startDate),
-          end_date: dateValueToStr(endDate),
+          start_date: dateTimeToStr(startDate),
+          end_date: dateTimeToStr(endDate),
         });
         result = res.detail;
         setItemCount(Number(res.total));
@@ -205,9 +178,9 @@ export default function ProjectManagementView() {
 
   return (
     <div>
-      <div className="bg-[#fff] p-5 mb-2 pb-0 flex justify-between">
+      <div className="bg-[#fff] p-5 mb-2 flex items-center justify-between">
         <Form
-          className="flex flex-row items-end gap-4"
+          className="flex flex-row items-center gap-4"
           onSubmit={(e) => {
             e.preventDefault();
             handleSearchClick();
@@ -238,16 +211,16 @@ export default function ProjectManagementView() {
         <Table.ScrollContainer>
           <Table.Content aria-label="data table">
             <Table.Header columns={columns}>
-              {(col) => <Table.Column id={col.id}>{col.name}</Table.Column>}
+              {(col) => <Table.Column id={col.id} isRowHeader={col.id === columns[0].id}>{col.name}</Table.Column>}
             </Table.Header>
             <Table.Body
               items={data}
               renderEmptyState={() => <div className="p-4">No data</div>}
             >
               {(row) => (
-                <Table.Row id={row.project_id}>
-                  {(colId) => {
-                    const colKey = String(colId);
+                <Table.Row id={row.project_id} columns={columns}>
+                  {(column: { id: string; name: string }) => {
+                    const colKey = column.id;
                     switch (colKey) {
                       case "project_content":
                         return (
@@ -389,14 +362,18 @@ export default function ProjectManagementView() {
                 Are you sure you want to delete this project?
               </AlertDialog.Body>
               <AlertDialog.Footer>
-                <AlertDialog.CloseTrigger>
-                  <Button variant="ghost">Cancel</Button>
-                </AlertDialog.CloseTrigger>
-                <AlertDialog.CloseTrigger>
-                  <Button variant="danger" onPress={handleDelete}>
-                    Delete
-                  </Button>
-                </AlertDialog.CloseTrigger>
+                <Button variant="ghost" onPress={() => setDeleteTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onPress={() => {
+                    setDeleteTarget(null);
+                    handleDelete();
+                  }}
+                >
+                  Delete
+                </Button>
               </AlertDialog.Footer>
             </AlertDialog.Dialog>
           </AlertDialog.Container>

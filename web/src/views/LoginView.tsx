@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, InputGroup, Label, TextField, toast } from "@heroui/react";
-import { post, type Response } from "@/api/http";
-import { login } from "@/api/url";
+import { loginApi } from "@/api/user";
 import { useUserStore, type UserState } from "@/context/UserContext";
 import { SITE_URL } from "@/utils/config";
 
@@ -17,14 +16,11 @@ export default function LoginView() {
 
   const onLogin = () => {
     setLoading(true);
-    post({
-      url: login,
-      data: {
-        username,
-        password,
-      },
+    loginApi({
+      username,
+      password,
     })
-      .then(({ data }: Response) => {
+      .then((data) => {
         userStore
           .saveUser({
             ...data,

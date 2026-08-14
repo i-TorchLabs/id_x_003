@@ -1,22 +1,27 @@
-import { post, get } from './http'
-import {
-  adminActivityCreate,
-  adminActivityDelete,
-  adminActivityDetail,
-  adminActivityList,
-  adminActivityNameList,
-  adminActivitySearch,
-  adminActivityUpdate,
-  adminProjectCreate,
-  adminProjectDelete,
-  adminProjectList,
-  adminProjectNameList,
-  adminProjectOwnerSearch,
-  adminProjectSearch,
-  adminProjectUpdate,
-  queryDataSearch,
-  queryTitleSearch
-} from './url'
+import dayjs from "dayjs";
+import { callApi, callFileApi, type FileResponse } from "./graphql";
+
+/**
+ * 管理端 GraphQL API（对应后端 src/controllers/x_controllers.py 的 Query/Mutation）
+ * 说明:
+ * - 字段名遵循 Strawberry 默认 camelCase 规则
+ * - 列表分页 offset 为页码(从 1 开始)、limit 为每页数量,均为整型
+ * - 时间筛选参数为毫秒时间戳字符串;'yyyy-MM-dd HH:mm'/'yyyy-MM-ddTHH:mm' 在此统一转换
+ */
+
+/** 'yyyy-MM-dd HH:mm' / 'yyyy-MM-ddTHH:mm' -> 毫秒时间戳字符串;空值 -> null */
+const toMs = (v?: string | null): string | null => {
+  if (!v) return null;
+  return String(dayjs(String(v).replace("T", " ")).valueOf());
+};
+
+/** 毫秒时间戳/字符串 -> 毫秒时间戳字符串;空值 -> null */
+const tsToMs = (v?: string | number | null): string | null => {
+  if (v === undefined || v === null || v === "") return null;
+  return String(v);
+};
+
+const toPage = (v?: string | number): number => Number(v ?? 1);
 
 export interface AdminProjectListReq {
   /**
@@ -458,146 +463,310 @@ export interface QueryDataSearchRes {
 }
 
 export const adminProjectListApi = async (data: AdminProjectListReq) => {
-  const { data: resData } = await post({
-    url: adminProjectList,
-    data
-  })
-
-  return resData as unknown as {
-    detail: AdminProjectListRes[]
-    total: string
-  }
-}
+  return await callApi<{
+    detail: AdminProjectListRes[];
+    total: string;
+  }>(
+    "manageProjectList",
+    `query ManageProjectList($data: PageInput!) {
+      manageProjectList(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        startDate: toMs(data.start_date),
+        endDate: toMs(data.end_date),
+        offset: toPage(data.offset),
+        limit: toPage(data.limit),
+      },
+    }
+  );
+};
 
 export const adminProjectUpdateApi = async (data: AdminProjectUpdateReq) => {
-  return await post({
-    url: adminProjectUpdate,
-    data
-  })
-}
+  return await callApi(
+    "manageProjectUpdate",
+    `mutation ManageProjectUpdate($data: ProjectUpdateInput!) {
+      manageProjectUpdate(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        projectId: data.project_id,
+        projectName: data.project_name,
+        projectContent: data.project_content,
+        quota: data.quota,
+      },
+    }
+  );
+};
 
 export const adminProjectSearchApi = async (data: AdminProjectSearchReq) => {
-  return (
-    await post({
-      url: adminProjectSearch,
-      data
-    })
-  )?.data as unknown as AdminProjectSearchRes
-}
+  const res = await callApi<{
+    project_id: string;
+    project_name: string;
+    proudct_content: string;
+    quota: string;
+    owner: string;
+  }>(
+    "manageProjectSearch",
+    `query ManageProjectSearch($data: ProjectIdInput!) {
+      manageProjectSearch(data: $data) { code msg data }
+    }`,
+    { data: { projectId: data.project_id } }
+  );
+  // 兼容旧 REST 响应字段命名(product_id/product_name/proudct_content)
+  return {
+    product_id: res.project_id,
+    product_name: res.project_name,
+    proudct_content: res.proudct_content,
+    quota: res.quota,
+    owner: res.owner,
+  } as unknown as AdminProjectSearchRes;
+};
 
 export const adminProjectCreateApi = async (data: AdminProjectCreateReq) => {
-  return await post({
-    url: adminProjectCreate,
-    data
-  })
-}
+  return await callApi(
+    "manageProjectCreate",
+    `mutation ManageProjectCreate($data: ProjectCreateInput!) {
+      manageProjectCreate(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        projectName: data.project_name,
+        projectContent: data.project_content,
+        quota: data.quota,
+        owner: (data as { owner?: string }).owner ?? "N/A",
+      },
+    }
+  );
+};
 
 export const adminProjectDeleteApi = async (data: AdminProjectDeleteReq) => {
-  return await post({
-    url: adminProjectDelete,
-    data
-  })
-}
+  return await callApi(
+    "manageProjectDelete",
+    `mutation ManageProjectDelete($data: ProjectIdInput!) {
+      manageProjectDelete(data: $data) { code msg data }
+    }`,
+    { data: { projectId: data.project_id } }
+  );
+};
 
 export const adminActivityListApi = async (data: AdminActivityListReq) => {
-  const { data: resData } = await post({
-    url: adminActivityList,
-    data
-  })
-
-  return resData as unknown as {
-    detail: AdminActivityListRes[]
-    total: string
-  }
-}
+  return await callApi<{
+    detail: AdminActivityListRes[];
+    total: string;
+  }>(
+    "manageActivityList",
+    `query ManageActivityList($data: PageInput!) {
+      manageActivityList(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        startDate: toMs(data.start_date),
+        endDate: toMs(data.end_date),
+        offset: toPage(data.offset),
+        limit: toPage(data.limit),
+      },
+    }
+  );
+};
 
 export const adminActivityUpdateApi = async (data: AdminActivityUpdateReq) => {
-  return await post({
-    url: adminActivityUpdate,
-    data
-  })
-}
+  return await callApi(
+    "manageActivityUpdate",
+    `mutation ManageActivityUpdate($data: ActivityUpdateInput!) {
+      manageActivityUpdate(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        activityId: data.activity_id,
+        projectId: data.project_id,
+        activityStartTime: tsToMs(data.activity_start_time),
+        activityEndTime: tsToMs(data.activity_end_time),
+        applyStartTime: tsToMs(data.apply_start_time),
+        applyEndTime: tsToMs(data.apply_end_time),
+      },
+    }
+  );
+};
 
 export const adminActivitySearchApi = async (data: AdminActivitySearchReq) => {
-  return (
-    await post({
-      url: adminActivitySearch,
-      data
-    })
-  ).data as unknown as AdminActivitySearchRes
-}
+  return await callApi<AdminActivitySearchRes>(
+    "manageActivitySearch",
+    `query ManageActivitySearch($data: ActivityIdInput!) {
+      manageActivitySearch(data: $data) { code msg data }
+    }`,
+    { data: { activityId: data.activity_id } }
+  );
+};
 
 export const adminActivityCreateApi = async (data: AdminActivityCreateReq) => {
-  return await post({
-    url: adminActivityCreate,
-    data
-  })
-}
+  return await callApi(
+    "manageActivityCreate",
+    `mutation ManageActivityCreate($data: ActivityCreateInput!) {
+      manageActivityCreate(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        projectId: data.project_id,
+        activityName: data.activity_name ?? null,
+        activityStartTime: tsToMs(data.activity_start_time),
+        activityEndTime: tsToMs(data.activity_end_time),
+        applyStartTime: tsToMs(data.apply_start_time),
+        applyEndTime: tsToMs(data.apply_end_time),
+      },
+    }
+  );
+};
 
 export const adminActivityDeleteApi = async (data: AdminActivityDeleteReq) => {
-  return await post({
-    url: adminActivityDelete,
-    data
-  })
-}
+  return await callApi(
+    "manageActivityDelete",
+    `mutation ManageActivityDelete($data: ActivityIdInput!) {
+      manageActivityDelete(data: $data) { code msg data }
+    }`,
+    { data: { activityId: data.activity_id } }
+  );
+};
 
 export const adminProjectNameListApi = async () => {
-  const { data: resData } = await post({
-    url: adminProjectNameList
-  })
+  return await callApi<{
+    detail: AdminProjectNameListRes[];
+    total: string;
+  }>(
+    "manageProjectNameList",
+    `query ManageProjectNameList {
+      manageProjectNameList { code msg data }
+    }`
+  );
+};
 
-  return resData as unknown as {
-    detail: AdminProjectNameListRes[]
-    total: string
-  }
-}
 export const adminActivityNameListApi = async (data: AdminActivityNameListReq) => {
-  const { data: resData } = await post({
-    url: adminActivityNameList,
-    data
-  })
-
-  return resData as unknown as {
-    detail: AdminActivityNameListRes[]
-    total: string
-  }
-}
+  return await callApi<{
+    detail: AdminActivityNameListRes[];
+    total: string;
+  }>(
+    "manageActivityNameList",
+    `query ManageActivityNameList($data: ActivityNameListInput!) {
+      manageActivityNameList(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        startDate: toMs(data.start_time),
+        endDate: toMs(data.end_time),
+        offset: toPage(data.offset),
+        limit: toPage(data.limit),
+      },
+    }
+  );
+};
 
 export const adminActivityDetailApi = async (data: AdminActivityDetailReq) => {
-  const { data: resData } = await get({
-    url: adminActivityDetail,
-    data
-  })
-
-  return resData as unknown as AdminActivityDetailRes
-}
+  return await callApi<AdminActivityDetailRes>(
+    "manageActivityDetail",
+    `query ManageActivityDetail($activityId: String!) {
+      manageActivityDetail(activityId: $activityId) { code msg data }
+    }`,
+    { activityId: data.activity_id }
+  );
+};
 
 export const queryTitleSearchApi = async () => {
-  const { data: resData } = await post({
-    url: queryTitleSearch
-  })
+  return await callApi<{
+    title_list: string[];
+  }>(
+    "queryTitleSearch",
+    `query QueryTitleSearch {
+      queryTitleSearch { code msg data }
+    }`
+  );
+};
 
-  return resData as unknown as {
-    title_list: string[]
-  }
-}
 export const queryDataSearchApi = async (data: QueryDataSearchApiReq) => {
-  const { data: resData } = await post({
-    url: queryDataSearch,
-    data
-  })
+  const startMs = toMs(data.start_time);
+  const endMs = toMs(data.end_time);
+  return await callApi<{
+    result: QueryDataSearchRes[];
+    total: string;
+  }>(
+    "queryDataSearch",
+    `query QueryDataSearch($data: QueryDataInput!) {
+      queryDataSearch(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        title: data.title ?? [],
+        startTime: startMs === null ? null : Number(startMs),
+        endTime: endMs === null ? null : Number(endMs),
+        offset: toPage(data.offset),
+        limit: toPage(data.limit),
+      },
+    }
+  );
+};
 
-  return resData as unknown as {
-    result: QueryDataSearchRes[],
-    total: string
-  }
-}
 export const adminProjectOwnerSearchApi = async () => {
-  const { data: resData } = await post({
-    url: adminProjectOwnerSearch
-  })
+  return await callApi<{
+    owner_list: string[];
+  }>(
+    "manageProjectOwnerSearch",
+    `query ManageProjectOwnerSearch {
+      manageProjectOwnerSearch { code msg data }
+    }`
+  );
+};
 
-  return resData as unknown as {
-    owner_list: string[],
-  }
-}
+/** File -> base64(不含 dataURL 前缀) */
+const fileToBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
+
+/** 批量上传排期(.xlsx,base64 传入);返回 { success, fail } */
+export const adminActivityUploadApi = async (file: File) => {
+  const fileBase64 = await fileToBase64(file);
+  return await callApi<{ success: number; fail: number }>(
+    "manageActivityUpload",
+    `mutation ManageActivityUpload($fileName: String!, $fileBase64: String!, $contentType: String!) {
+      manageActivityUpload(fileName: $fileName, fileBase64: $fileBase64, contentType: $contentType) { code msg data }
+    }`,
+    {
+      fileName: file.name,
+      fileBase64,
+      contentType: file.type || "",
+    }
+  );
+};
+
+/** 下载 14 天批量排期模板(Excel,base64) */
+export const adminActivityDownloadApi = async (): Promise<FileResponse> => {
+  return await callFileApi(
+    "manageActivityDownload",
+    `query ManageActivityDownload {
+      manageActivityDownload { code msg fileName fileBase64 }
+    }`
+  );
+};
+
+/** 导出报名数据(Excel,base64) */
+export const adminActivityExportApi = async (data: {
+  activity_list: string[];
+  start_time?: string;
+  end_time?: string;
+}): Promise<FileResponse> => {
+  return await callFileApi(
+    "manageActivityExport",
+    `query ManageActivityExport($data: ActivityExportInput!) {
+      manageActivityExport(data: $data) { code msg fileName fileBase64 }
+    }`,
+    {
+      data: {
+        activityList: data.activity_list,
+        startTime: toMs(data.start_time),
+        endTime: toMs(data.end_time),
+      },
+    }
+  );
+};

@@ -33,6 +33,10 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       AA_MAIL_PASSWORD: ${AA_MAIL_PASSWORD:-}
       PROJECT_PATH: /app/i-Torch
+    volumes:
+      # 日志挂载:宿主机 x_models/id_x_003/logs -> 容器日志目录 /app/i-Torch/logs
+      # (日志路径由 utils/log_util.py 按 PROJECT_PATH + config 中 logs/*.log 解析)
+      - ../logs:/app/i-Torch/logs
     depends_on:
       db:
         condition: service_healthy

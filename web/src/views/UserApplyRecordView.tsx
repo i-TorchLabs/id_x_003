@@ -49,6 +49,8 @@ export default function UserApplyRecordView() {
     getData(page)
   }
 
+  const [cancelTarget, setCancelTarget] = useState<UserAcitvityDetail | null>(null)
+
   const doCancel = async (row: UserAcitvityDetail) => {
     try {
       await userAcitvityDeleteApi({
@@ -74,49 +76,25 @@ export default function UserApplyRecordView() {
         <Table.ScrollContainer>
           <Table.Content aria-label="data table">
             <Table.Header columns={columns}>
-              {(col) => <Table.Column id={col.id}>{col.name}</Table.Column>}
+              {(col) => <Table.Column id={col.id} isRowHeader={col.id === columns[0].id}>{col.name}</Table.Column>}
             </Table.Header>
             <Table.Body
               items={data}
               renderEmptyState={() => <div className="p-4 text-center">No Data</div>}
             >
               {(row) => (
-                <Table.Row id={row.apply_id}>
+                <Table.Row id={row.apply_id} columns={columns}>
                   {(column: { id: string; name: string }) => {
                     if (column.id === 'options') {
                       return (
                         <Table.Cell>
                           {/* 增加“取消/Cancel”按钮，活动时间前 4 小时，按钮置灰 */}
-                          <AlertDialog>
-                            <AlertDialog.Trigger>
-                              <Button isDisabled={dayjs().add(4, 'hour').isAfter(row.end_time)}>
-                                Cancel
-                              </Button>
-                            </AlertDialog.Trigger>
-                            <AlertDialog.Backdrop>
-                              <AlertDialog.Container placement="center">
-                                <AlertDialog.Dialog>
-                                  <AlertDialog.Header>
-                                    <AlertDialog.Icon status="warning" />
-                                    <AlertDialog.Heading>Cancel Activity</AlertDialog.Heading>
-                                  </AlertDialog.Header>
-                                  <AlertDialog.Body>
-                                    Are you sure to cancel this activity?
-                                  </AlertDialog.Body>
-                                  <AlertDialog.Footer>
-                                    <AlertDialog.CloseTrigger>
-                                      <Button variant="ghost">No</Button>
-                                    </AlertDialog.CloseTrigger>
-                                    <AlertDialog.CloseTrigger>
-                                      <Button variant="danger" onPress={() => doCancel(row)}>
-                                        Yes
-                                      </Button>
-                                    </AlertDialog.CloseTrigger>
-                                  </AlertDialog.Footer>
-                                </AlertDialog.Dialog>
-                              </AlertDialog.Container>
-                            </AlertDialog.Backdrop>
-                          </AlertDialog>
+                          <Button
+                            isDisabled={dayjs().add(4, 'hour').isAfter(row.end_time)}
+                            onPress={() => setCancelTarget(row)}
+                          >
+                            Cancel
+                          </Button>
                         </Table.Cell>
                       )
                     }
@@ -130,6 +108,37 @@ export default function UserApplyRecordView() {
           </Table.Content>
         </Table.ScrollContainer>
       </Table>
+      <AlertDialog
+        isOpen={!!cancelTarget}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+      >
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container placement="center">
+            <AlertDialog.Dialog>
+              <AlertDialog.Header>
+                <AlertDialog.Icon status="warning" />
+                <AlertDialog.Heading>Cancel Activity</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>Are you sure to cancel this activity?</AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button variant="ghost" onPress={() => setCancelTarget(null)}>
+                  No
+                </Button>
+                <Button
+                  variant="danger"
+                  onPress={() => {
+                    const row = cancelTarget
+                    setCancelTarget(null)
+                    if (row) doCancel(row)
+                  }}
+                >
+                  Yes
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
       <div className="flex justify-end p-2">
         <Pagination aria-label="pagination">
           <Pagination.Summary>

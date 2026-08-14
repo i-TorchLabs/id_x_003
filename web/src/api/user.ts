@@ -1,5 +1,21 @@
-import { post, get } from './http'
-import { userAcitvityApply, userAcitvityDelete, userAcitvityDetail, userAcitvityList, userAcitvitySearch } from './url'
+import dayjs from "dayjs";
+import { callApi } from "./graphql";
+
+/**
+ * 学生端 + 认证 GraphQL API(对应后端 src/controllers/x_controllers.py)
+ * 说明:
+ * - 字段名遵循 Strawberry 默认 camelCase 规则
+ * - 分页 offset 为页码(从 1 开始)、limit 为每页数量,均为整型
+ * - 时间筛选参数为毫秒时间戳字符串;'yyyy-MM-dd HH:mm'/'yyyy-MM-ddTHH:mm' 在此统一转换
+ */
+
+/** 'yyyy-MM-dd HH:mm' / 'yyyy-MM-ddTHH:mm' -> 毫秒时间戳字符串;空值 -> null */
+const toMs = (v?: string | null): string | null => {
+  if (!v) return null;
+  return String(dayjs(String(v).replace("T", " ")).valueOf());
+};
+
+const toPage = (v?: string | number): number => Number(v ?? 1);
 
 export interface UserAcitvityListReq {
   /**
@@ -223,43 +239,109 @@ export interface UserAcitvityDetail {
   time: string
 }
 
-export const userAcitvityListApi = async (data: UserAcitvityListReq) => {
-  const { data: resData } = await post({
-    url: userAcitvityList,
-    data
-  })
 
-  return resData as unknown as UserAcitvityListRes
-}
+/** 管理员账号密码登录 */
+export const loginApi = async (data: { username: string; password: string }) => {
+  return await callApi<{
+    user_id: string;
+    token: string;
+    role: string;
+  }>(
+    "login",
+    `mutation Login($data: LoginInput!) {
+      login(data: $data) { code msg data }
+    }`,
+    { data: { username: data.username, password: data.password } }
+  );
+};
+
+/** 学生 SSO 登录(首次自动建档) */
+export const userAcitvityOauthApi = async (oauthToken: string) => {
+  return await callApi<{
+    check: string;
+    username: string;
+    user_id: string;
+    token: string;
+  }>(
+    "userActivityOauth",
+    `mutation UserActivityOauth($data: OauthInput!) {
+      userActivityOauth(data: $data) { code msg data }
+    }`,
+    { data: { oauthToken } }
+  );
+};
+
+export const userAcitvityListApi = async (data: UserAcitvityListReq & { fuzzy_name?: string }) => {
+  return await callApi<UserAcitvityListRes>(
+    "userActivityList",
+    `query UserActivityList($data: UserActivityListInput!) {
+      userActivityList(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        startDate: toMs(data.start_date),
+        endDate: toMs(data.end_data ?? (data as { end_date?: string }).end_date),
+        offset: toPage(data.offset),
+        limit: toPage(data.limit),
+        fuzzyName: data.fuzzy_name ?? "",
+      },
+    }
+  );
+};
 
 export const userAcitvitySearchApi = async (data: UserAcitvitySearchReq) => {
-  const { data: resData } = await get({
-    url: userAcitvitySearch,
-    data
-  })
-
-  return resData as unknown as UserAcitvitySearchRes
-}
+  return await callApi<UserAcitvitySearchRes>(
+    "userActivitySearch",
+    `query UserActivitySearch($activityId: String!) {
+      userActivitySearch(activityId: $activityId) { code msg data }
+    }`,
+    { activityId: data.activity_id }
+  );
+};
 
 export const userAcitvityDetailApi = async (data: UserAcitvityDetailReq) => {
-  const { data: resData } = await post({
-    url: userAcitvityDetail,
-    data
-  })
-
-  return resData as unknown as UserAcitvityDetailRes
-}
+  return await callApi<UserAcitvityDetailRes>(
+    "userActivityDetail",
+    `query UserActivityDetail($data: UserRecordsInput!) {
+      userActivityDetail(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        userId: data.user_id,
+        offset: toPage(data.offset),
+        limit: toPage(data.limit),
+      },
+    }
+  );
+};
 
 export const userAcitvityApplyApi = async (data: UserAcitvityApplyReq) => {
-  await post({
-    url: userAcitvityApply,
-    data
-  })
-}
+  await callApi(
+    "userActivityApply",
+    `mutation UserActivityApply($data: UserActivityApplyInput!) {
+      userActivityApply(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        userId: data.user_id,
+        activityId: data.activity_id,
+        info: data.detail?.info ?? "",
+      },
+    }
+  );
+};
 
 export const userAcitvityDeleteApi = async (data: UserAcitvityDeleteReq) => {
-  await post({
-    url: userAcitvityDelete,
-    data
-  })
-}
+  await callApi(
+    "userActivityDelete",
+    `mutation UserActivityDelete($data: UserApplyDeleteInput!) {
+      userActivityDelete(data: $data) { code msg data }
+    }`,
+    {
+      data: {
+        userId: data.user_id,
+        applyId: data.apply_id,
+      },
+    }
+  );
+};

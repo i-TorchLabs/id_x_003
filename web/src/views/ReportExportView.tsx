@@ -11,15 +11,14 @@ import {
   Pagination,
   Spinner,
   TextField,
+  toast,
 } from "@heroui/react";
-import qs from "qs";
 import {
+  adminActivityExportApi,
   adminActivityNameListApi,
   type AdminActivityNameListRes,
 } from "@/api/admin";
-import { adminActivityExport } from "@/api/url";
-import { SITE_URL } from "@/utils/config";
-import { download } from "@/utils/download";
+import { downloadBase64 } from "@/utils/download";
 import QueryManagement, {
   type QueryManagementRef,
 } from "@/components/aa/QueryManagement";
@@ -69,16 +68,18 @@ export default function ReportExportView() {
     else setNameIds(nameList.map((item) => item.activity_name));
   };
 
-  const handleExportClick = () => {
+  const handleExportClick = async () => {
     setExporting(true);
-    download(
-      `${SITE_URL}/b/sme/aa/enlist${adminActivityExport}?` +
-        qs.stringify({
-          activity_list: JSON.stringify(nameIds),
-          start_time: formatDateTime(formValue.start_date),
-          end_time: formatDateTime(formValue.end_date),
-        })
-    );
+    try {
+      const res = await adminActivityExportApi({
+        activity_list: nameIds,
+        start_time: formatDateTime(formValue.start_date),
+        end_time: formatDateTime(formValue.end_date),
+      });
+      downloadBase64(res.fileName, res.fileBase64);
+    } catch (error) {
+      toast.danger((error as Error).message);
+    }
     setTimeout(() => {
       setExporting(false);
     }, 3000);
@@ -117,16 +118,18 @@ export default function ReportExportView() {
 
   return (
     <>
-      <div className="bg-[#fff] p-5 mb-2 pb-0 flex justify-between">
-        <div className="flex flex-wrap items-end gap-4">
+      <div className="bg-[#fff] p-5 mb-2 flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-4">
           <TextField
             value={formValue.start_date ?? ""}
             onChange={(v) =>
               setFormValue((f) => ({ ...f, start_date: v || undefined }))
             }
           >
-            <Label>Start Time</Label>
-            <Input type="datetime-local" placeholder="Please Input Start Time" />
+            <div className="flex items-center gap-2">
+              <Label className="shrink-0">Start Time</Label>
+              <Input type="datetime-local" placeholder="Please Input Start Time" />
+            </div>
           </TextField>
           <TextField
             value={formValue.end_date ?? ""}
@@ -134,8 +137,10 @@ export default function ReportExportView() {
               setFormValue((f) => ({ ...f, end_date: v || undefined }))
             }
           >
-            <Label>End Time</Label>
-            <Input type="datetime-local" placeholder="Please Input End Time" />
+            <div className="flex items-center gap-2">
+              <Label className="shrink-0">End Time</Label>
+              <Input type="datetime-local" placeholder="Please Input End Time" />
+            </div>
           </TextField>
           <Button type="button" onPress={handleSearchClick}>
             Search
