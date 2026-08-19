@@ -33,7 +33,7 @@
 
 1. **GraphQL 单一入口架构** —— 全部业务收敛于 `/b/id_x_003/graphql` 一个端点，Query/Mutation 职责清晰，替代原 REST 多路由模式
 2. **Thin Resolver 分层设计** —— Controller 只做参数透传，业务逻辑集中于 Views 层，Schemas 层纯契约无逻辑，便于测试与维护
-3. **插件化接入** —— 通过 `PluginInterface` 懒加载接入宿主框架，统一负责建表与会话注入，与 i-Torch 其他插件解耦
+3. **插件化接入** —— 通过 `PluginInterface` 懒加载接入宿主框架，统一负责建表与会话注入，与 i-Box 其他插件解耦
 4. **响应契约向后兼容** —— 统一 `{code, msg, data}` 响应结构，与原 REST 系统完全一致，前端零迁移成本
 5. **文件传输协议统一** —— 模板下载、数据导出以 `file_name + file_base64` 返回，批量排期上传同协议传入 `.xlsx`，无需额外文件服务
 6. **容器化一键部署** —— podman-compose 编排 PostgreSQL / Service / Web / HAProxy 四组件，`ops/up.sh` 一条命令拉起完整环境
@@ -218,7 +218,7 @@ curl -X POST "<BASE_URL>/b/id_x_003/graphql" \
 
 ```bash
 git clone <仓库地址>
-cd i-Torch/x_models/id_x_003/ops
+cd i-Box/x_models/id_x_003/ops
 cp .env.example .env   # 填入 POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD / AA_MAIL_PASSWORD
 ```
 
@@ -246,7 +246,7 @@ podman-compose logs -f service                 # 跟踪后端日志
 本地开发模式：
 
 ```bash
-# 后端（在 i-Torch 宿主工程中运行，插件自动挂载至 /b/id_x_003/graphql）
+# 后端（在 i-Box 宿主工程中运行，插件自动挂载至 /b/id_x_003/graphql）
 # 前端
 cd web && npm install && npm run dev           # 默认端口 2000
 ```

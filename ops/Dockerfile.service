@@ -1,7 +1,7 @@
 # id_x_003 后端服务镜像（构建上下文为仓库根目录）
 FROM ghcr.io/astral-sh/uv:0.9-python3.10-bookworm-slim AS builder
 
-WORKDIR /app/i-Torch
+WORKDIR /app/i-Box
 
 # 仅安装生产依赖（pyproject.toml 作为 requirements 源，不构建项目本身）
 COPY pyproject.toml ./
@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && uv pip install --system --no-cache -r pyproject.toml
 
 FROM python:3.10-slim
-WORKDIR /app/i-Torch
+WORKDIR /app/i-Box
 
 # 运行时依赖：libpq（psycopg2）、curl（健康检查）
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,16 +22,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-COPY main.py /app/i-Torch/main.py
-COPY src /app/i-Torch/src
-COPY utils /app/i-Torch/utils
-COPY config /app/i-Torch/config
-COPY x_models/_contracts /app/i-Torch/x_models/_contracts
-COPY x_models/id_x_003 /app/i-Torch/x_models/id_x_003
+COPY main.py /app/i-Box/main.py
+COPY src /app/i-Box/src
+COPY utils /app/i-Box/utils
+COPY config /app/i-Box/config
+COPY x_models/_contracts /app/i-Box/x_models/_contracts
+COPY x_models/id_x_003 /app/i-Box/x_models/id_x_003
 
-RUN mkdir -p /app/i-Torch/logs && chown -R appuser:appuser /app/i-Torch
+RUN mkdir -p /app/i-Box/logs && chown -R appuser:appuser /app/i-Box
 
-ENV PROJECT_PATH=/app/i-Torch \
+ENV PROJECT_PATH=/app/i-Box \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
