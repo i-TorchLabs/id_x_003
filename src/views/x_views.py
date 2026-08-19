@@ -278,6 +278,47 @@ async def _count(session, stmt) -> int:
     return int(result.scalar() or 0)
 
 
+# ===== 登录防暴力破解（漏洞报告 #3） =====
+# 同一用户名连续失败达到阈值后锁定一段时间；内存实现，进程重启自动清零
+LOGIN_MAX_FAILURES = _env_int("AA_LOGIN_MAX_FAILURES", 5)
+LOGIN_LOCK_SECONDS = _env_int("AA_LOGIN_LOCK_SECONDS", 600)
+# {username: [fail_count, first_fail_ts, lock_until_ts]}
+_login_failures: dict[str, list[float]] = {}
+
+
+def _login_locked(username: str) -> int:
+    """返回剩余锁定秒数，未锁定返回 0。"""
+    rec = _login_failures.get(username)
+    if not rec:
+        return 0
+    lock_until = rec[2]
+    remaining = int(lock_until - datetime.now().timestamp())
+    if remaining <= 0:
+        _login_failures.pop(username, None)
+        return 0
+    return remaining
+
+
+def _record_login_failure(username: str) -> None:
+    now = datetime.now().timestamp()
+    rec = _login_failures.get(username)
+    if not rec or now - rec[1] > LOGIN_LOCK_SECONDS:
+        rec = [0, now, 0.0]
+    rec[0] += 1
+    if rec[0] >= LOGIN_MAX_FAILURES:
+        rec[2] = now + LOGIN_LOCK_SECONDS
+        logger.warning(f"{_rid()}账号 {username} 连续失败 {int(rec[0])} 次，锁定 {LOGIN_LOCK_SECONDS}s")
+    _login_failures[username] = rec
+    # 防止内存无限增长：超过一万条时清理已过期的记录
+    if len(_login_failures) > 10_000:
+        for k in [k for k, v in _login_failures.items() if v[2] and v[2] < now]:
+            _login_failures.pop(k, None)
+
+
+def _clear_login_failures(username: str) -> None:
+    _login_failures.pop(username, None)
+
+
 # ===== 健康检查 =====
 async def view_health(info: Info) -> HealthType:
     logger.info(f"{_rid()}health check")
@@ -293,15 +334,22 @@ async def view_login(info: Info, data: LoginInput) -> ApiResponse:
         try:
             username = data.username.strip()
             password = data.password.strip()
+            # 防暴力破解：锁定中的账号直接拒绝（漏洞报告 #3）
+            locked_for = _login_locked(username)
+            if locked_for:
+                return _resp(423, f"账号已锁定，请 {locked_for // 60 + 1} 分钟后再试")
             obj = await _first(session, select(AaEnlistUser).where(
                 AaEnlistUser.username == username,
             ))
             if not obj:
                 _check_password(_DUMMY_HASH, password)  # 抹平时序，防用户名枚举
+                _record_login_failure(username)
                 return _resp(401, "Login Fail")
             ok, new_hash = _check_password(obj.password, password)
             if not ok:
+                _record_login_failure(username)
                 return _resp(401, "Login Fail")
+            _clear_login_failures(username)
             key = secrets.token_urlsafe(32)
             obj.key = key
             obj.time = datetime.now()

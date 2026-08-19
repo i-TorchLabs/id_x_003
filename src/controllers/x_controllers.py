@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import strawberry
 from litestar import Router
+from strawberry.extensions import DisableIntrospection, QueryDepthLimiter
 from strawberry.litestar import make_graphql_controller
 from strawberry.types import Info
 
@@ -177,7 +178,17 @@ class Mutation:
         return await x_views.view_manage_activity_upload(info, file_name, file_base64, content_type)
 
 
-schema = strawberry.Schema(query=Query, mutation=Mutation)
+# 安全加固：
+# - DisableIntrospection：关闭 introspection，防止攻击者获取完整 schema（漏洞报告 #1）
+# - QueryDepthLimiter：限制查询深度，防止深层嵌套查询造成 DoS
+schema = strawberry.Schema(
+    query=Query,
+    mutation=Mutation,
+    extensions=[
+        DisableIntrospection(),
+        QueryDepthLimiter(max_depth=10),
+    ],
+)
 
 
 def register_routers(route_prefix: str) -> Router:
