@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { callApi } from "./graphql";
+import { callApi, graphqlRequest, type ApiResponse } from "./graphql";
 
 /**
  * 学生端 + 认证 GraphQL API(对应后端 src/controllers/x_controllers.py)
@@ -240,19 +240,45 @@ export interface UserAcitvityDetail {
 }
 
 
-/** 管理员账号密码登录 */
-export const loginApi = async (data: { username: string; password: string }) => {
-  return await callApi<{
-    user_id: string;
-    token: string;
-    role: string;
-  }>(
-    "login",
+/** 管理员账号密码登录（支持验证码，漏洞报告 #3）
+ *  返回完整 ApiResponse.data：登录成功含 user_id/token/role；
+ *  触发验证码时含 need_captcha/captcha_id/image_base64，由页面展示验证码。
+ */
+export const loginApi = async (data: {
+  username: string;
+  password: string;
+  captcha_id?: string;
+  captcha_code?: string;
+}) => {
+  const res = await graphqlRequest(
     `mutation Login($data: LoginInput!) {
       login(data: $data) { code msg data }
     }`,
-    { data: { username: data.username, password: data.password } }
+    {
+      data: {
+        username: data.username,
+        password: data.password,
+        captcha_id: data.captcha_id || "",
+        captcha_code: data.captcha_code || "",
+      },
+    }
   );
+  const resp = res.login as ApiResponse<{
+    user_id?: string;
+    token?: string;
+    role?: string;
+    need_captcha?: string;
+    captcha_id?: string;
+    image_base64?: string;
+  }>;
+  if (resp.code === 200) {
+    return resp.data as { user_id: string; token: string; role: string };
+  }
+  // 非 200：抛出携带完整 data 的错误，页面据此判断是否展示验证码
+  const err: any = new Error(resp.msg || "登录失败");
+  err.code = resp.code;
+  err.data = resp.data || {};
+  throw err;
 };
 
 /** 学生 SSO 登录(首次自动建档) */

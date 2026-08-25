@@ -319,6 +319,100 @@ def _clear_login_failures(username: str) -> None:
     _login_failures.pop(username, None)
 
 
+def _login_fail_response(username: str) -> ApiResponse:
+    """登录失败统一响应：失败计数达验证码门槛时随 401 一并下发新验证码。"""
+    if _captcha_required(username):
+        cap = _generate_captcha()
+        return _resp(401, "Login Fail", {
+            "need_captcha": "true",
+            "captcha_id": cap["captcha_id"],
+            "image_base64": cap["image_base64"],
+        })
+    return _resp(401, "Login Fail")
+
+
+# ===== 图形验证码（漏洞报告 #3 建议①：连续失败后增加验证码机制） =====
+# 连续失败达到 CAPTCHA_AFTER_FAILURES 后要求验证码，达 LOGIN_MAX_FAILURES 仍锁定
+CAPTCHA_AFTER_FAILURES = _env_int("AA_CAPTCHA_AFTER_FAILURES", 3)
+_CAPTCHA_TTL_SECONDS = 300
+_CAPTCHA_MAX_ENTRIES = 10_000
+_CAPTCHA_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 去除易混淆 0/O/1/I
+_CAPTCHA_LEN = 4
+# {captcha_id: (code_lower, expire_ts)}
+_captcha_store: dict[str, tuple[str, float]] = {}
+
+
+def _captcha_required(username: str) -> bool:
+    """该账号是否已触发验证码门槛（基于已有失败计数）。"""
+    rec = _login_failures.get(username)
+    return bool(rec and rec[0] >= CAPTCHA_AFTER_FAILURES)
+
+
+def _render_captcha_svg(code: str) -> str:
+    """生成带干扰的 SVG 验证码（干扰线/噪点/字符旋转错位），无第三方绘图依赖。"""
+    import random
+    width, height = 132, 48
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="#f4f6fb"/>',
+    ]
+    for _ in range(4):  # 干扰曲线
+        x1, y1 = random.randint(0, width), random.randint(0, height)
+        x2, y2 = random.randint(0, width), random.randint(0, height)
+        cx, cy = random.randint(0, width), random.randint(0, height)
+        color = f"#{random.randint(0, 0xFFFFFF):06x}"
+        parts.append(
+            f'<path d="M{x1},{y1} Q{cx},{cy} {x2},{y2}" stroke="{color}" '
+            f'stroke-width="1" fill="none" opacity="0.5"/>'
+        )
+    for _ in range(30):  # 噪点
+        px, py = random.randint(0, width), random.randint(0, height)
+        color = f"#{random.randint(0, 0xFFFFFF):06x}"
+        parts.append(f'<circle cx="{px}" cy="{py}" r="1" fill="{color}" opacity="0.6"/>')
+    step = width // (_CAPTCHA_LEN + 1)
+    for i, ch in enumerate(code):  # 字符旋转 + 错位
+        x = step * (i + 1)
+        y = height // 2 + random.randint(-6, 6)
+        rot = random.randint(-28, 28)
+        color = f"#{random.randint(0, 0x555555):06x}"
+        size = random.randint(22, 28)
+        parts.append(
+            f'<text x="{x}" y="{y + size // 3}" transform="rotate({rot} {x} {y})" '
+            f'font-family="monospace" font-size="{size}" font-weight="bold" fill="{color}">'
+            f"{ch}</text>"
+        )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _generate_captcha() -> dict[str, str]:
+    """生成验证码，返回 {captcha_id, image_base64(data URL)}。"""
+    now = datetime.now().timestamp()
+    if len(_captcha_store) > _CAPTCHA_MAX_ENTRIES:
+        for k in [k for k, (_, exp) in _captcha_store.items() if exp < now]:
+            _captcha_store.pop(k, None)
+    code = "".join(secrets.choice(_CAPTCHA_CHARS) for _ in range(_CAPTCHA_LEN))
+    captcha_id = secrets.token_urlsafe(16)
+    _captcha_store[captcha_id] = (code.lower(), now + _CAPTCHA_TTL_SECONDS)
+    svg = _render_captcha_svg(code)
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    return {"captcha_id": captcha_id, "image_base64": f"data:image/svg+xml;base64,{b64}"}
+
+
+def _verify_captcha(captcha_id: str, captcha_code: str) -> bool:
+    """一次性校验：无论对错都作废，防重放/枚举。"""
+    if not captcha_id or not captcha_code:
+        return False
+    rec = _captcha_store.pop(captcha_id, None)
+    if not rec:
+        return False
+    code, exp = rec
+    if exp < datetime.now().timestamp():
+        return False
+    return secrets.compare_digest(code, captcha_code.strip().lower())
+
+
 # ===== 健康检查 =====
 async def view_health(info: Info) -> HealthType:
     logger.info(f"{_rid()}health check")
@@ -338,17 +432,26 @@ async def view_login(info: Info, data: LoginInput) -> ApiResponse:
             locked_for = _login_locked(username)
             if locked_for:
                 return _resp(423, f"账号已锁定，请 {locked_for // 60 + 1} 分钟后再试")
+            # 验证码门槛（漏洞报告 #3 建议①）：连续失败达阈值后必须先通过验证码
+            if _captcha_required(username):
+                if not _verify_captcha(data.captcha_id, data.captcha_code):
+                    cap = _generate_captcha()
+                    return _resp(428, "需要验证码", {
+                        "need_captcha": "true",
+                        "captcha_id": cap["captcha_id"],
+                        "image_base64": cap["image_base64"],
+                    })
             obj = await _first(session, select(AaEnlistUser).where(
                 AaEnlistUser.username == username,
             ))
             if not obj:
                 _check_password(_DUMMY_HASH, password)  # 抹平时序，防用户名枚举
                 _record_login_failure(username)
-                return _resp(401, "Login Fail")
+                return _login_fail_response(username)
             ok, new_hash = _check_password(obj.password, password)
             if not ok:
                 _record_login_failure(username)
-                return _resp(401, "Login Fail")
+                return _login_fail_response(username)
             _clear_login_failures(username)
             key = secrets.token_urlsafe(32)
             obj.key = key
@@ -390,6 +493,9 @@ async def view_logout(info: Info, data: LogoutInput) -> ApiResponse:
 # 学生端 · 活动浏览 / 报名 / 记录
 # ---------------------------
 async def view_user_activity_list(info: Info, data: UserActivityListInput) -> ApiResponse:
+    # 登录校验（漏洞报告 #2）：未登录不得浏览活动列表
+    if not await _verify_token(info):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
@@ -460,6 +566,9 @@ async def view_user_activity_list(info: Info, data: UserActivityListInput) -> Ap
 
 
 async def view_user_activity_search(info: Info, activity_id: str) -> ApiResponse:
+    # 登录校验（漏洞报告 #2）：未登录不得查看活动详情
+    if not await _verify_token(info):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
@@ -515,6 +624,9 @@ async def view_user_activity_search(info: Info, activity_id: str) -> ApiResponse
 
 
 async def view_user_activity_fuzzy_name(info: Info, data: FuzzyNameInput) -> ApiResponse:
+    # 登录校验（漏洞报告 #2）：未登录不得搜索活动名
+    if not await _verify_token(info):
+        return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:

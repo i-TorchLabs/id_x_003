@@ -11,6 +11,11 @@ export default function LoginView() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // 验证码（漏洞报告 #3）：连续失败后后端下发，需输入后才能继续登录
+  const [needCaptcha, setNeedCaptcha] = useState(false);
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaImg, setCaptchaImg] = useState("");
+  const [captchaCode, setCaptchaCode] = useState("");
   const router = useRouter();
   const userStore = useUserStore();
 
@@ -19,6 +24,8 @@ export default function LoginView() {
     loginApi({
       username,
       password,
+      captcha_id: captchaId,
+      captcha_code: captchaCode,
     })
       .then((data) => {
         userStore
@@ -37,6 +44,14 @@ export default function LoginView() {
       })
       .catch((error) => {
         setLoading(false);
+        // 后端要求验证码：展示验证码图片与输入框
+        const d = (error as any)?.data;
+        if (d?.need_captcha === "true" && d?.image_base64) {
+          setNeedCaptcha(true);
+          setCaptchaId(d.captcha_id || "");
+          setCaptchaImg(d.image_base64);
+          setCaptchaCode("");
+        }
         toast.danger(error.message);
       });
   };
@@ -76,6 +91,32 @@ export default function LoginView() {
                   </InputGroup>
                 </TextField>
               </div>
+              {needCaptcha && (
+                <div className="mt-4 w-full">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <TextField value={captchaCode} onChange={setCaptchaCode}>
+                        <InputGroup>
+                          <InputGroup.Prefix className="w-20">Captcha</InputGroup.Prefix>
+                          <InputGroup.Input placeholder="Code" maxLength={4} />
+                        </InputGroup>
+                      </TextField>
+                    </div>
+                    {/* 点击图片刷新验证码（触发一次空登录换取新验证码） */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={captchaImg}
+                      alt="captcha"
+                      title="Click to refresh"
+                      onClick={() => {
+                        setCaptchaCode("");
+                        onLogin();
+                      }}
+                      className="h-[40px] w-[110px] cursor-pointer rounded border border-gray-300 bg-white"
+                    />
+                  </div>
+                </div>
+              )}
               <div className="mt-6">
                 <Button
                   variant="primary"

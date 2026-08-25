@@ -36,6 +36,8 @@ class FileResponse:
 class LoginInput:
     username: str = strawberry.field(description="用户名")
     password: str = strawberry.field(description="密码")
+    captcha_id: str = strawberry.field(default="", description="验证码ID（触发验证码后必填）")
+    captcha_code: str = strawberry.field(default="", description="验证码答案（触发验证码后必填）")
 
 
 @strawberry.input

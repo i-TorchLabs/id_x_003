@@ -178,19 +178,28 @@ class Mutation:
         return await x_views.view_manage_activity_upload(info, file_name, file_base64, content_type)
 
 
-# 安全加固：
-# - DisableIntrospection：关闭 introspection，防止攻击者获取完整 schema（漏洞报告 #1）
+# 安全加固（漏洞报告 #1）：
+# - DisableIntrospection：关闭 introspection，防止攻击者获取完整 schema
 # - QueryDepthLimiter：限制查询深度，防止深层嵌套查询造成 DoS
 schema = strawberry.Schema(
     query=Query,
     mutation=Mutation,
     extensions=[
         DisableIntrospection(),
-        QueryDepthLimiter(max_depth=10),
+        QueryDepthLimiter(max_depth=8),
     ],
 )
 
 
+
 def register_routers(route_prefix: str) -> Router:
-    controller = make_graphql_controller(schema, path="/graphql")
+    # 安全加固（漏洞报告 #1 补充）：
+    # - graphql_ide=None：禁止对外暴露 GraphiQL 交互式 IDE，避免泄露 schema 线索
+    # - allow_queries_via_get=False：仅接受 POST 查询，杜绝 GET/URL 直达与缓存投毒
+    controller = make_graphql_controller(
+        schema,
+        path="/graphql",
+        graphql_ide=None,
+        allow_queries_via_get=False,
+    )
     return Router(path=route_prefix, route_handlers=[controller])

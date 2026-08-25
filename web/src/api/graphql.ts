@@ -17,6 +17,23 @@ export interface FileResponse {
 
 const ENDPOINT = API_BASE_URL || "/b/id_x_003/graphql";
 
+/**
+ * 会话失效处理（漏洞报告 #2 建议：用 session 对身份进行判断和控制）：
+ * 后端返回 401（Token 无效/过期/被踢）时，清除本地会话并强制跳回登录页，
+ * 避免用户停留在受保护页面但接口持续 401 的半登录状态。
+ */
+function handleSessionExpired(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("userInfo");
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  // 避免在登录页/SSO 回调页重复跳转
+  const path = window.location.pathname;
+  if (!path.startsWith("/f/aa/login") && !path.startsWith("/f/aa/user/oauth2")) {
+    window.location.href = "/f/aa/login";
+  }
+}
+
 interface GraphQLPayload {
   data?: Record<string, any>;
   errors?: { message: string }[];
@@ -27,7 +44,7 @@ interface GraphQLPayload {
  * - 自动从 localStorage 注入 Token 请求头（后端从 Header "Token" 读取）
  * - HTTP 状态非 200 或存在 errors 时抛错
  */
-async function graphqlRequest(
+export async function graphqlRequest(
   query: string,
   variables?: Record<string, any>
 ): Promise<Record<string, any>> {
@@ -73,6 +90,9 @@ export async function callApi<T = any>(
   if (resp.code === 200) {
     return resp.data;
   }
+  if (resp.code === 401) {
+    handleSessionExpired();
+  }
   throw new Error(resp.msg || "请求失败，未知异常");
 }
 
@@ -88,6 +108,9 @@ export async function callFileApi(
   const resp = data[field] as FileResponse;
   if (resp.code === 200) {
     return resp;
+  }
+  if (resp.code === 401) {
+    handleSessionExpired();
   }
   throw new Error(resp.msg || "请求失败，未知异常");
 }
