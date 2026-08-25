@@ -32,11 +32,11 @@ services:
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       AA_MAIL_PASSWORD: ${AA_MAIL_PASSWORD:-}
-      PROJECT_PATH: /app/i-Box
+      PROJECT_PATH: /app/i-Core
     volumes:
-      # 日志挂载:宿主机 x_models/id_x_003/logs -> 容器日志目录 /app/i-Box/logs
+      # 日志挂载:宿主机 x_models/id_x_003/logs -> 容器日志目录 /app/i-Core/logs
       # (日志路径由 utils/log_util.py 按 PROJECT_PATH + config 中 logs/*.log 解析)
-      - ../logs:/app/i-Box/logs
+      - ../logs:/app/i-Core/logs
     depends_on:
       db:
         condition: service_healthy

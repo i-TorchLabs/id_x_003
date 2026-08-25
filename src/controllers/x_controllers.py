@@ -18,6 +18,7 @@ from x_models.id_x_003.src.schemas.x_schemas import (
     FuzzyNameInput,
     HealthType,
     LoginInput,
+    LoginKeyType,
     LogoutInput,
     OauthInput,
     PageInput,
@@ -39,6 +40,10 @@ class Query:
     @strawberry.field(description="健康检查")
     async def health(self, info: Info) -> HealthType:
         return await x_views.view_health(info)
+
+    @strawberry.field(description="登录传输加密公钥（RSA-2048 PEM，前端加密用户名/密码用）")
+    async def login_key(self, info: Info) -> LoginKeyType:
+        return await x_views.view_login_key(info)
 
     # ----- 学生端 · 活动浏览 -----
     @strawberry.field(description="学生端活动列表（分页，可按时间区间+活动名筛选）")

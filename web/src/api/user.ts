@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { callApi, graphqlRequest, type ApiResponse } from "./graphql";
+import { encryptLoginCredentials } from "@/utils/crypto";
 
 /**
  * 学生端 + 认证 GraphQL API(对应后端 src/controllers/x_controllers.py)
@@ -241,6 +242,8 @@ export interface UserAcitvityDetail {
 
 
 /** 管理员账号密码登录（支持验证码，漏洞报告 #3）
+ *  传输加密：用户名/密码先经后端 loginKey 公钥 RSA-OAEP(SHA-256) 加密，
+ *  后端以内存私钥解密，明文不出现在网络载荷中。
  *  返回完整 ApiResponse.data：登录成功含 user_id/token/role；
  *  触发验证码时含 need_captcha/captcha_id/image_base64，由页面展示验证码。
  */
@@ -250,16 +253,18 @@ export const loginApi = async (data: {
   captcha_id?: string;
   captcha_code?: string;
 }) => {
+  const encrypted = await encryptLoginCredentials(data.username, data.password);
   const res = await graphqlRequest(
     `mutation Login($data: LoginInput!) {
       login(data: $data) { code msg data }
     }`,
     {
       data: {
-        username: data.username,
-        password: data.password,
-        captcha_id: data.captcha_id || "",
-        captcha_code: data.captcha_code || "",
+        username: encrypted.username,
+        password: encrypted.password,
+        encrypted: true,
+        captchaId: data.captcha_id || "",
+        captchaCode: data.captcha_code || "",
       },
     }
   );

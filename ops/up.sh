@@ -57,7 +57,7 @@ if ! podman container exists "${PLUGIN}_service"; then
         -e DB_USERNAME="${POSTGRES_USER}" \
         -e DB_PASSWORD="${POSTGRES_PASSWORD}" \
         -e AA_MAIL_PASSWORD="${AA_MAIL_PASSWORD:-}" \
-        -e PROJECT_PATH=/app/i-Box \
+        -e PROJECT_PATH=/app/i-Core \
         "${PLUGIN}_service"
 fi
 

@@ -32,10 +32,18 @@ class FileResponse:
 
 
 # ===== 认证 =====
+@strawberry.type
+class LoginKeyType:
+    """登录传输加密公钥：前端用其 RSA-OAEP(SHA-256) 加密用户名/密码后再提交。"""
+    public_key: str = strawberry.field(description="RSA-2048 公钥（PEM）")
+    algorithm: str = strawberry.field(default="RSA-OAEP-SHA256", description="加密算法标识")
+
+
 @strawberry.input
 class LoginInput:
-    username: str = strawberry.field(description="用户名")
-    password: str = strawberry.field(description="密码")
+    username: str = strawberry.field(description="用户名（encrypted=true 时为 RSA 密文 base64）")
+    password: str = strawberry.field(description="密码（encrypted=true 时为 RSA 密文 base64）")
+    encrypted: bool = strawberry.field(default=False, description="用户名/密码是否经 loginKey 公钥加密")
     captcha_id: str = strawberry.field(default="", description="验证码ID（触发验证码后必填）")
     captcha_code: str = strawberry.field(default="", description="验证码答案（触发验证码后必填）")
 

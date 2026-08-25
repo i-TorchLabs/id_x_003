@@ -52,6 +52,7 @@ from x_models.id_x_003.src.schemas.x_schemas import (
     FuzzyNameInput,
     HealthType,
     LoginInput,
+    LoginKeyType,
     LogoutInput,
     OauthInput,
     PageInput,
@@ -65,6 +66,7 @@ from x_models.id_x_003.src.schemas.x_schemas import (
     UserApplyDeleteInput,
     UserRecordsInput,
 )
+from x_models.id_x_003.src.utils import x_crypto
 
 # ===== 常量（与原系统一致） =====
 WEEK_LIST = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
@@ -422,12 +424,35 @@ async def view_health(info: Info) -> HealthType:
 # ---------------------------
 # 认证相关
 # ---------------------------
+async def view_login_key(info: Info) -> LoginKeyType:
+    """下发登录传输加密公钥（RSA-2048，PEM）。
+
+    前端以此公钥（RSA-OAEP-SHA256）加密用户名/密码，密文只在后端内存私钥可解。
+    """
+    return LoginKeyType(public_key=x_crypto.public_key_pem())
+
+
+def _decrypt_login_credentials(data: LoginInput) -> tuple[str, str] | None:
+    """按 encrypted 标志解析登录凭据；加密模式下解密失败返回 None。"""
+    if not data.encrypted:
+        return data.username.strip(), data.password.strip()
+    username = x_crypto.decrypt_field(data.username)
+    password = x_crypto.decrypt_field(data.password)
+    if username is None or password is None:
+        return None
+    return username.strip(), password.strip()
+
+
 async def view_login(info: Info, data: LoginInput) -> ApiResponse:
     maker = get_session()
     async with maker() as session:
         try:
-            username = data.username.strip()
-            password = data.password.strip()
+            credentials = _decrypt_login_credentials(data)
+            if credentials is None:
+                # 密文无法解密（非本公钥加密/被篡改/密钥已轮换）：统一按登录失败处理，不泄露细节
+                logger.warning(f"{_rid()}登录凭据解密失败")
+                return _resp(400, "登录请求无效，请刷新页面后重试")
+            username, password = credentials
             # 防暴力破解：锁定中的账号直接拒绝（漏洞报告 #3）
             locked_for = _login_locked(username)
             if locked_for:
