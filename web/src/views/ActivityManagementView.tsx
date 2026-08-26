@@ -176,7 +176,6 @@ export default function ActivityManagementView() {
       );
       return;
     }
-    const formValue = activityFormRef.current?.formValue;
     const reqData = {
       ...formValue,
       // ActivityForm 的 project_id 来自 Select key（string），后端要求 Int
