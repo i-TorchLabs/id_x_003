@@ -98,7 +98,7 @@ export interface UserAcitvitySearchReq {
   /**
    * 活动ID
    */
-  activity_id?: string
+  activity_id?: number
 }
 
 type DetailItem = {
@@ -154,25 +154,25 @@ export interface UserAcitvityApplyReq {
   /**
    * 活动ID
    */
-  activity_id: string
+  activity_id: number
   detail: {
     [key: string]: string
   }
   /**
    * 用户ID
    */
-  user_id: string
+  user_id: number
   [property: string]: any
 }
 export interface UserAcitvityDeleteReq {
   /**
    * 报名ID
    */
-  apply_id: string
+  apply_id: number
   /**
    * 用户ID
    */
-  user_id: string
+  user_id: number
 }
 
 export interface UserAcitvityDetailReq {
@@ -187,7 +187,7 @@ export interface UserAcitvityDetailReq {
   /**
    * 用户ID
    */
-  user_id: string
+  user_id: number
 }
 
 /**
@@ -323,7 +323,7 @@ export const userAcitvityListApi = async (data: UserAcitvityListReq & { fuzzy_na
 export const userAcitvitySearchApi = async (data: UserAcitvitySearchReq) => {
   return await callApi<UserAcitvitySearchRes>(
     "userActivitySearch",
-    `query UserActivitySearch($activityId: String!) {
+    `query UserActivitySearch($activityId: Int!) {
       userActivitySearch(activityId: $activityId) { code msg data }
     }`,
     { activityId: data.activity_id }

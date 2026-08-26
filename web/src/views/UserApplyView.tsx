@@ -33,7 +33,7 @@ export default function UserApplyView() {
     const activityId = searchParams.get('activity_id')
     if (activityId) {
       const res = await userAcitvitySearchApi({
-        activity_id: activityId
+        activity_id: Number(activityId)
       })
       setData({
         ...res,
@@ -45,8 +45,8 @@ export default function UserApplyView() {
   const handleSubmit = async () => {
     try {
       await userAcitvityApplyApi({
-        user_id: userStore.state.userId,
-        activity_id: searchParams.get('activity_id') as string,
+        user_id: Number(userStore.state.userId),
+        activity_id: Number(searchParams.get('activity_id')),
         detail: {
           info: radioValue
         }

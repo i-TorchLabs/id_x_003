@@ -51,7 +51,7 @@ class Query:
         return await x_views.view_user_activity_list(info, data)
 
     @strawberry.field(description="学生端活动详情")
-    async def user_activity_search(self, info: Info, activity_id: str) -> ApiResponse:
+    async def user_activity_search(self, info: Info, activity_id: int) -> ApiResponse:
         return await x_views.view_user_activity_search(info, activity_id)
 
     @strawberry.field(description="活动名前缀模糊搜索")
@@ -85,7 +85,7 @@ class Query:
         return await x_views.view_manage_activity_list(info, data)
 
     @strawberry.field(description="活动报名明细")
-    async def manage_activity_detail(self, info: Info, activity_id: str) -> ApiResponse:
+    async def manage_activity_detail(self, info: Info, activity_id: int) -> ApiResponse:
         return await x_views.view_manage_activity_detail(info, activity_id)
 
     @strawberry.field(description="活动名称列表（去重，分页）")

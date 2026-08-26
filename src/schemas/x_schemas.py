@@ -50,7 +50,7 @@ class LoginInput:
 
 @strawberry.input
 class LogoutInput:
-    user_id: str = strawberry.field(description="用户ID")
+    user_id: int = strawberry.field(description="用户ID")
 
 
 @strawberry.input
@@ -70,22 +70,22 @@ class UserActivityListInput:
 
 @strawberry.input
 class UserActivityApplyInput:
-    user_id: str = strawberry.field(description="用户ID")
-    activity_id: str = strawberry.field(description="活动ID")
+    user_id: int = strawberry.field(description="用户ID")
+    activity_id: int = strawberry.field(description="活动ID")
     info: str = strawberry.field(default="", description="咨询话题（info_1）")
 
 
 @strawberry.input
 class UserRecordsInput:
-    user_id: str = strawberry.field(description="用户ID")
+    user_id: int = strawberry.field(description="用户ID")
     offset: int = strawberry.field(default=1, description="页码")
     limit: int = strawberry.field(default=30, description="每页数量")
 
 
 @strawberry.input
 class UserApplyDeleteInput:
-    user_id: str = strawberry.field(description="用户ID")
-    apply_id: str = strawberry.field(description="报名ID")
+    user_id: int = strawberry.field(description="用户ID")
+    apply_id: int = strawberry.field(description="报名ID")
 
 
 @strawberry.input
@@ -104,7 +104,7 @@ class PageInput:
 
 @strawberry.input
 class ProjectUpdateInput:
-    project_id: str = strawberry.field(description="项目ID")
+    project_id: int = strawberry.field(description="项目ID")
     project_name: str = strawberry.field(description="项目名称")
     project_content: str = strawberry.field(description="项目内容")
     quota: str = strawberry.field(description="名额")
@@ -112,7 +112,7 @@ class ProjectUpdateInput:
 
 @strawberry.input
 class ProjectIdInput:
-    project_id: str = strawberry.field(description="项目ID")
+    project_id: int = strawberry.field(description="项目ID")
 
 
 @strawberry.input
@@ -135,7 +135,7 @@ class ActivityNameListInput:
 
 @strawberry.input
 class ActivityCreateInput:
-    project_id: str = strawberry.field(description="项目ID")
+    project_id: int = strawberry.field(description="项目ID")
     activity_name: Optional[str] = strawberry.field(default=None, description="活动名称")
     activity_start_time: Optional[str] = strawberry.field(default=None, description="活动开始（毫秒时间戳）")
     activity_end_time: Optional[str] = strawberry.field(default=None, description="活动结束（毫秒时间戳）")
@@ -145,8 +145,8 @@ class ActivityCreateInput:
 
 @strawberry.input
 class ActivityUpdateInput:
-    activity_id: str = strawberry.field(description="活动ID")
-    project_id: str = strawberry.field(description="项目ID")
+    activity_id: int = strawberry.field(description="活动ID")
+    project_id: int = strawberry.field(description="项目ID")
     activity_start_time: Optional[str] = strawberry.field(default=None, description="活动开始（毫秒时间戳）")
     activity_end_time: Optional[str] = strawberry.field(default=None, description="活动结束（毫秒时间戳）")
     apply_start_time: Optional[str] = strawberry.field(default=None, description="报名开始（毫秒时间戳）")
@@ -155,7 +155,7 @@ class ActivityUpdateInput:
 
 @strawberry.input
 class ActivityIdInput:
-    activity_id: str = strawberry.field(description="活动ID")
+    activity_id: int = strawberry.field(description="活动ID")
 
 
 @strawberry.input

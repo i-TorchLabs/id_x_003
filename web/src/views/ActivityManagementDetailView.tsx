@@ -45,7 +45,7 @@ export default function ActivityManagementDetailView() {
     let result: AdminActivityDetail[] = [];
     try {
       const res = await adminActivityDetailApi({
-        activity_id: searchParams.get("activity_id") ?? undefined,
+        activity_id: Number(searchParams.get("activity_id")) || undefined,
       });
       result = res.detail;
       setItemCount(Number(res.total));

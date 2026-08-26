@@ -500,9 +500,7 @@ async def view_logout(info: Info, data: LogoutInput) -> ApiResponse:
     maker = get_session()
     async with maker() as session:
         try:
-            user_id = _to_int(data.user_id)
-            if user_id is None:
-                return _resp(400, "用户ID非法")
+            user_id = data.user_id
             obj = await _first(session, select(AaEnlistUser).where(AaEnlistUser.id == user_id))
             if obj:
                 obj.key = "N/A"
@@ -590,16 +588,14 @@ async def view_user_activity_list(info: Info, data: UserActivityListInput) -> Ap
             return _resp(500, "服务器错误")
 
 
-async def view_user_activity_search(info: Info, activity_id: str) -> ApiResponse:
+async def view_user_activity_search(info: Info, activity_id: int) -> ApiResponse:
     # 登录校验（漏洞报告 #2）：未登录不得查看活动详情
     if not await _verify_token(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
-            activity_pk = _to_int(activity_id)
-            if activity_pk is None:
-                return _resp(404, "活动不存在")
+            activity_pk = activity_id
             obj = await _first(session, select(AaEnlistActivity).where(
                 AaEnlistActivity.id == activity_pk
             ))
@@ -672,18 +668,18 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
     maker = get_session()
     async with maker() as session:
         try:
-            user_id = data.user_id
+            user_id = data.user_id  # int（Input 已改 Int）
             activity_id = data.activity_id
             info_text = data.info
 
-            activity_pk = _to_int(activity_id)
-            if activity_pk is None:
-                return _resp(404, "活动或用户不存在")
+            activity_pk = activity_id
+            # AaEnlistApply.user_id 为 String 列，查询/写入需用字符串形式
+            user_id_str = str(user_id)
 
             # 检查是否在同一周内已有报名
             result = await session.execute(
                 select(AaEnlistApply)
-                .where(AaEnlistApply.user_id == user_id)
+                .where(AaEnlistApply.user_id == user_id_str)
                 .order_by(desc(AaEnlistApply.time))
             )
             existing_applies = result.scalars().all()
@@ -696,8 +692,8 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
                         AaEnlistActivity.id == activity_pk
                     ))
                     return _resp(403, "You can only make one reservation in the same week.", {
-                        "user_id": user_id,
-                        "activity_id": activity_id,
+                        "user_id": user_id_str,
+                        "activity_id": str(activity_id),
                         "acctivity_name": activity.name if activity else "",
                         "apply_time": existing_applies[0].time.strftime("%Y-%m-%d %H:%M") if existing_applies[0].time else "",
                     })
@@ -705,11 +701,8 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
             activity = await _first(session, select(AaEnlistActivity).where(
                 AaEnlistActivity.id == activity_pk
             ))
-            user_pk = _to_int(user_id)
-            if user_pk is None:
-                return _resp(404, "活动或用户不存在")
             user = await _first(session, select(AaEnlistUser).where(
-                AaEnlistUser.id == user_pk
+                AaEnlistUser.id == user_id
             ))
 
             if not activity or not user:
@@ -718,7 +711,7 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
             obj = AaEnlistApply(
                 project_id=activity.project_id,
                 activity_id=activity_pk,
-                user_id=user_id,
+                user_id=user_id_str,
                 order="R" + "".join(secrets.choice(string.digits) for _ in range(8)),
                 name=user.name,
                 number=user.number,
@@ -823,7 +816,7 @@ async def view_user_activity_detail(info: Info, data: UserRecordsInput) -> ApiRe
     maker = get_session()
     async with maker() as session:
         try:
-            user_id = data.user_id
+            user_id = str(data.user_id)  # AaEnlistApply.user_id 为 String 列
             offset, limit = _clamp_page(data.offset, data.limit)
 
             query = select(AaEnlistApply).where(
@@ -959,10 +952,8 @@ async def view_user_activity_delete(info: Info, data: UserApplyDeleteInput) -> A
     maker = get_session()
     async with maker() as session:
         try:
-            user_id = data.user_id
-            apply_pk = _to_int(data.apply_id)
-            if apply_pk is None:
-                return _resp(404, "报名记录不存在")
+            user_id = str(data.user_id)  # AaEnlistApply.user_id 为 String 列
+            apply_pk = data.apply_id  # int（Input 已改 Int）
 
             apply_obj = await _first(session, select(AaEnlistApply).where(
                 AaEnlistApply.user_id == user_id,
@@ -1095,9 +1086,7 @@ async def view_manage_project_update(info: Info, data: ProjectUpdateInput) -> Ap
     maker = get_session()
     async with maker() as session:
         try:
-            project_pk = _to_int(data.project_id)
-            if project_pk is None:
-                return _resp(400, "项目ID非法")
+            project_pk = data.project_id
             obj = await _first(session, select(AaEnlistProject).where(
                 AaEnlistProject.id == project_pk
             ))
@@ -1129,9 +1118,7 @@ async def view_manage_project_search(info: Info, data: ProjectIdInput) -> ApiRes
     maker = get_session()
     async with maker() as session:
         try:
-            project_pk = _to_int(data.project_id)
-            if project_pk is None:
-                return _resp(400, "项目ID非法")
+            project_pk = data.project_id
             obj = await _first(session, select(AaEnlistProject).where(
                 AaEnlistProject.id == project_pk
             ))
@@ -1214,9 +1201,7 @@ async def view_manage_project_delete(info: Info, data: ProjectIdInput) -> ApiRes
     maker = get_session()
     async with maker() as session:
         try:
-            project_id = _to_int(data.project_id)
-            if project_id is None:
-                return _resp(400, "项目ID非法")
+            project_id = data.project_id
 
             await session.execute(delete(AaEnlistApply).where(AaEnlistApply.project_id == project_id))
             await session.execute(delete(AaEnlistActivity).where(AaEnlistActivity.project_id == project_id))
@@ -1309,15 +1294,13 @@ async def view_manage_activity_list(info: Info, data: PageInput) -> ApiResponse:
             return _resp(500, "服务器错误")
 
 
-async def view_manage_activity_detail(info: Info, activity_id: str) -> ApiResponse:
+async def view_manage_activity_detail(info: Info, activity_id: int) -> ApiResponse:
     if not await _verify_admin(info):
         return _resp(401, "Token Error")
     maker = get_session()
     async with maker() as session:
         try:
-            activity_pk = _to_int(activity_id)
-            if activity_pk is None:
-                return _resp(404, "活动不存在")
+            activity_pk = activity_id
             result = await session.execute(
                 select(AaEnlistApply)
                 .where(AaEnlistApply.activity_id == activity_pk)
@@ -1423,9 +1406,7 @@ async def view_manage_activity_create(info: Info, data: ActivityCreateInput) -> 
     maker = get_session()
     async with maker() as session:
         try:
-            project_pk = _to_int(data.project_id)
-            if project_pk is None:
-                return _resp(400, "项目ID非法")
+            project_pk = data.project_id
             project = await _first(session, select(AaEnlistProject).where(
                 AaEnlistProject.id == project_pk
             ))
@@ -1465,10 +1446,8 @@ async def view_manage_activity_update(info: Info, data: ActivityUpdateInput) -> 
     maker = get_session()
     async with maker() as session:
         try:
-            project_pk = _to_int(data.project_id)
-            activity_pk = _to_int(data.activity_id)
-            if project_pk is None or activity_pk is None:
-                return _resp(400, "ID非法")
+            project_pk = data.project_id
+            activity_pk = data.activity_id
             project = await _first(session, select(AaEnlistProject).where(
                 AaEnlistProject.id == project_pk
             ))
@@ -1512,9 +1491,7 @@ async def view_manage_activity_search(info: Info, data: ActivityIdInput) -> ApiR
     maker = get_session()
     async with maker() as session:
         try:
-            activity_pk = _to_int(data.activity_id)
-            if activity_pk is None:
-                return _resp(400, "活动ID非法")
+            activity_pk = data.activity_id
             obj = await _first(session, select(AaEnlistActivity).where(
                 AaEnlistActivity.id == activity_pk
             ))
@@ -1543,9 +1520,7 @@ async def view_manage_activity_delete(info: Info, data: ActivityIdInput) -> ApiR
     maker = get_session()
     async with maker() as session:
         try:
-            activity_id = _to_int(data.activity_id)
-            if activity_id is None:
-                return _resp(400, "活动ID非法")
+            activity_id = data.activity_id
 
             await session.execute(delete(AaEnlistActivity).where(AaEnlistActivity.id == activity_id))
             await session.execute(delete(AaEnlistApply).where(AaEnlistApply.activity_id == activity_id))

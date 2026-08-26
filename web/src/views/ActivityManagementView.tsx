@@ -128,7 +128,7 @@ export default function ActivityManagementView() {
   const openModal = async (isEdit = false, activityId = "") => {
     if (isEdit) {
       const activityFormData = await adminActivitySearchApi({
-        activity_id: activityId,
+        activity_id: Number(activityId),
       });
       setModalState({
         isEdit,
@@ -176,11 +176,14 @@ export default function ActivityManagementView() {
       );
       return;
     }
+    const formValue = activityFormRef.current?.formValue;
     const reqData = {
-      ...activityFormRef.current?.formValue,
-    } as unknown as AdminActivityCreateReq & { activity_id?: string };
+      ...formValue,
+      // ActivityForm 的 project_id 来自 Select key（string），后端要求 Int
+      project_id: formValue?.project_id != null ? Number(formValue.project_id) : undefined,
+    } as unknown as AdminActivityCreateReq & { activity_id?: number };
     if (modalState.isEdit) {
-      reqData.activity_id = modalState.activityId;
+      reqData.activity_id = Number(modalState.activityId);
       await adminActivityUpdateApi(reqData as AdminActivityUpdateReq);
     } else {
       await adminActivityCreateApi(reqData as AdminActivityCreateReq);
@@ -192,7 +195,7 @@ export default function ActivityManagementView() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     await adminActivityDeleteApi({
-      activity_id: deleteTarget.activity_id,
+      activity_id: Number(deleteTarget.activity_id),
     });
     getData();
   };

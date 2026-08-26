@@ -32,7 +32,7 @@ export default function UserApplyRecordView() {
     async (page: number) => {
       setLoading(true)
       const { detail, total } = await userAcitvityDetailApi({
-        user_id: userStore.state.userId,
+        user_id: Number(userStore.state.userId),
         offset: page.toString(),
         limit: pagination.pageSize.toString()
       })
@@ -54,8 +54,8 @@ export default function UserApplyRecordView() {
   const doCancel = async (row: UserAcitvityDetail) => {
     try {
       await userAcitvityDeleteApi({
-        apply_id: row.apply_id,
-        user_id: userStore.state.userId
+        apply_id: Number(row.apply_id),
+        user_id: Number(userStore.state.userId)
       })
       getData(pagination.page)
     } catch (error) {

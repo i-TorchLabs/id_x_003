@@ -77,7 +77,7 @@ export interface AdminProjectUpdateReq {
   /**
    * 项目ID
    */
-  project_id: string
+  project_id: number
   /**
    * 项目名称
    */
@@ -92,7 +92,7 @@ export interface AdminProjectSearchReq {
   /**
    * 项目ID
    */
-  project_id: string
+  project_id: number
 }
 
 export interface AdminProjectSearchRes {
@@ -152,7 +152,7 @@ export interface AdminProjectDeleteReq {
   /**
    * 项目ID
    */
-  project_id: string
+  project_id: number
 }
 
 export interface AdminActivityListReq {
@@ -229,7 +229,7 @@ export interface AdminActivityDetailReq {
   /**
    * 活动ID
    */
-  activity_id?: string
+  activity_id?: number
 }
 
 export interface AdminActivityDetailRes {
@@ -327,14 +327,14 @@ export interface AdminActivityCreateReq {
   /**
    * 项目ID
    */
-  project_id: string
+  project_id: number
 }
 
 export interface AdminActivityUpdateReq {
   /**
    * 活动ID
    */
-  activity_id: string
+  activity_id: number
   /**
    * 活动结束时间
    */
@@ -362,14 +362,14 @@ export interface AdminActivityUpdateReq {
   /**
    * 项目ID
    */
-  project_id: string
+  project_id: number
 }
 
 export interface AdminActivitySearchReq {
   /**
    * 活动ID
    */
-  activity_id: string
+  activity_id: number
 }
 
 export interface AdminActivitySearchRes {
@@ -403,7 +403,7 @@ export interface AdminActivityDeleteReq {
   /**
    * 活动ID
    */
-  activity_id: string
+  activity_id: number
 }
 
 export interface AdminProjectNameListRes {
@@ -663,7 +663,7 @@ export const adminActivityNameListApi = async (data: AdminActivityNameListReq) =
 export const adminActivityDetailApi = async (data: AdminActivityDetailReq) => {
   return await callApi<AdminActivityDetailRes>(
     "manageActivityDetail",
-    `query ManageActivityDetail($activityId: String!) {
+    `query ManageActivityDetail($activityId: Int!) {
       manageActivityDetail(activityId: $activityId) { code msg data }
     }`,
     { activityId: data.activity_id }

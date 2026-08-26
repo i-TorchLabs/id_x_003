@@ -125,7 +125,7 @@ export default function ProjectManagementView() {
   const openModal = async (isEdit = false, projectId = "") => {
     if (isEdit) {
       const projectFormData = await adminProjectSearchApi({
-        project_id: projectId,
+        project_id: Number(projectId),
       });
       setModalState({
         isEdit,
@@ -147,9 +147,9 @@ export default function ProjectManagementView() {
     const reqData = {
       project_content: projectFormRef.current?.richTextEditor?.getHtmlContent?.(),
       ...projectFormRef.current?.formValue,
-    } as AdminProjectCreateReq & { project_id?: string };
+    } as AdminProjectCreateReq & { project_id?: number };
     if (modalState.isEdit) {
-      reqData.project_id = modalState.projectId;
+      reqData.project_id = Number(modalState.projectId);
       await adminProjectUpdateApi(reqData as AdminProjectUpdateReq);
     } else {
       await adminProjectCreateApi(reqData);
@@ -161,7 +161,7 @@ export default function ProjectManagementView() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     await adminProjectDeleteApi({
-      project_id: deleteTarget.project_id,
+      project_id: Number(deleteTarget.project_id),
     });
     getData();
   };
