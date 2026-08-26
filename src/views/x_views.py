@@ -717,7 +717,7 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
 
             obj = AaEnlistApply(
                 project_id=activity.project_id,
-                activity_id=activity_id,
+                activity_id=activity_pk,
                 user_id=user_id,
                 order="R" + "".join(secrets.choice(string.digits) for _ in range(8)),
                 name=user.name,
@@ -1435,7 +1435,7 @@ async def view_manage_activity_create(info: Info, data: ActivityCreateInput) -> 
 
             res = AaEnlistActivity(
                 name=project.name,
-                project_id=data.project_id,
+                project_id=project_pk,
                 activity_start_time=_ms_to_dt(data.activity_start_time),
                 activity_end_time=_ms_to_dt(data.activity_end_time),
                 apply_start_time=_ms_to_dt(data.apply_start_time),
@@ -1483,7 +1483,7 @@ async def view_manage_activity_update(info: Info, data: ActivityUpdateInput) -> 
             if not obj:
                 return _resp(404, "活动不存在")
 
-            obj.project_id = data.project_id
+            obj.project_id = project_pk
             obj.name = project.name
             obj.activity_start_time = _ms_to_dt(data.activity_start_time)
             obj.activity_end_time = _ms_to_dt(data.activity_end_time)
