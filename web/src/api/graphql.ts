@@ -29,7 +29,7 @@ function handleSessionExpired(): void {
   localStorage.removeItem("user");
   // 避免在登录页/SSO 回调页重复跳转
   const path = window.location.pathname;
-  if (!path.startsWith("/f/aa/login") && !path.startsWith("/f/aa/user/oauth2")) {
+  if (!path.startsWith("/f/aa/login") && !path.startsWith("/f/003/oauth2")) {
     window.location.href = "/f/aa/login";
   }
 }

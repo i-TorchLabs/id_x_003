@@ -25,7 +25,10 @@ fi
 
 # 3. Pod（已存在则跳过）
 if ! podman pod exists "${PLUGIN}"; then
-    podman pod create --name "${PLUGIN}" -p "${HOST_PORT}:8080"
+    # 宿主机 35432 -> pod 5432(由容器内 db 监听),宿主机 8003 -> pod 8080
+    podman pod create --name "${PLUGIN}" \
+        -p "${HOST_PORT}:8080" \
+        -p "35432:5432"
 fi
 
 # 4. 数据卷（已存在则跳过）
@@ -37,6 +40,7 @@ if ! podman container exists "${PLUGIN}_db"; then
         -e POSTGRES_DB="${POSTGRES_DB}" \
         -e POSTGRES_USER="${POSTGRES_USER}" \
         -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+        --expose 5432 \
         -v "${PLUGIN}_db_data:/var/lib/postgresql" \
         -v "${OPS_DIR}/init:/docker-entrypoint-initdb.d:ro" \
         --health-cmd "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" \
