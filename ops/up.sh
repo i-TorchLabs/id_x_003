@@ -61,6 +61,9 @@ if ! podman container exists "${PLUGIN}_service"; then
         -e DB_USERNAME="${POSTGRES_USER}" \
         -e DB_PASSWORD="${POSTGRES_PASSWORD}" \
         -e AA_MAIL_PASSWORD="${AA_MAIL_PASSWORD:-}" \
+        -e AA_OAUTH_CLIENT_ID="${AA_OAUTH_CLIENT_ID:-}" \
+        -e AA_OAUTH_CLIENT_SECRET="${AA_OAUTH_CLIENT_SECRET:-}" \
+        -e AA_OAUTH_REDIRECT_URI="${AA_OAUTH_REDIRECT_URI:-}" \
         -e PROJECT_PATH=/app/i-Core \
         "${PLUGIN}_service"
 fi

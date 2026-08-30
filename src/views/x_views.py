@@ -17,6 +17,7 @@ import re
 import secrets
 import smtplib
 import string
+import time
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -66,7 +67,7 @@ from x_models.id_x_003.src.schemas.x_schemas import (
     UserApplyDeleteInput,
     UserRecordsInput,
 )
-from x_models.id_x_003.src.utils import x_crypto
+from x_models.id_x_003.src.utils import x_crypto, x_oauth
 
 # ===== 常量（与原系统一致） =====
 WEEK_LIST = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
@@ -883,16 +884,90 @@ def _decode_oauth_payload(oauth_token: str) -> dict | None:
         return None
 
 
+# ===== OAuth2 配置（敏感信息经环境变量注入） =====
+OAUTH_CLIENT_ID = os.environ.get("AA_OAUTH_CLIENT_ID", "")
+OAUTH_CLIENT_SECRET = os.environ.get("AA_OAUTH_CLIENT_SECRET", "")
+OAUTH_REDIRECT_URI = os.environ.get("AA_OAUTH_REDIRECT_URI", "")
+
+
+def _oauth_config_missing() -> bool:
+    """SSO 服务端配置是否缺失。"""
+    return not (OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET and OAUTH_REDIRECT_URI)
+
+
 async def view_user_activity_oauth(info: Info, data: OauthInput) -> ApiResponse:
+    """学生 SSO 登录：ADFS 授权码授予流。
+
+    流程：
+    1. 前端经 ADFS /authorize 重定向回业务站点，携带 code + state；
+    2. 本接口用 code + client_secret（仅服务端持有）到 /token 换 id_token；
+    3. 验签 / 校验 id_token，提取 upn/email/name 建档或更新会话；
+    4. 返回服务端签发的独立会话 token，不再暴露 IdP token。
+    """
+    if _oauth_config_missing():
+        logger.error(f"{_rid()}OAuth2 服务端配置缺失（AA_OAUTH_CLIENT_ID/SECRET/REDIRECT_URI）")
+        return _resp(500, "SSO 服务未配置")
+
+    # 授权码授予流：code 优先；旧 oauth_token 仅为兼容保留
+    logger.info(f"{_rid()}OAuth 登录请求: has_code={bool(data.code)} has_token={bool(data.oauth_token)}")
+    payload_data: dict | None = None
+    if data.code:
+        # 防重放 nonce：与本次授权码绑定，ADFS 回显后由 exchange_code_for_token 校验
+        nonce = hashlib.sha256(data.code.encode("utf-8")).hexdigest()
+        token_resp = x_oauth.exchange_code_for_token(
+            code=data.code,
+            client_id=OAUTH_CLIENT_ID,
+            client_secret=OAUTH_CLIENT_SECRET,
+            redirect_uri=OAUTH_REDIRECT_URI,
+            expected_nonce=nonce,
+        )
+        if token_resp is None:
+            logger.warning(f"{_rid()}OAuth /token 换取失败（code 无效/过期/已用/重放或网络问题）")
+            return _resp(401, "Invalid OAuth Code")
+        id_token = x_oauth.extract_id_token(token_resp)
+        if not id_token:
+            logger.warning(f"{_rid()}OAuth /token 响应缺少 id_token: keys={list(token_resp.keys())}")
+            return _resp(401, "Invalid OAuth Token Response")
+        logger.info(f"{_rid()}OAuth 换取 id_token 成功，开始验签")
+        payload_data, reason = x_oauth.verify_id_token(id_token, expected_aud=OAUTH_CLIENT_ID)
+        if payload_data is None:
+            # 失败诊断直接进 warn.log：payload keys 是定位 ADFS 配置问题的关键证据
+            _payload = x_oauth.decode_payload_unverified(id_token) or {}
+            logger.warning(
+                f"{_rid()}OAuth id_token 验签/校验失败: reason={reason} "
+                f"keys={sorted(_payload.keys())} aud={_payload.get('aud')!r} "
+                f"iss={_payload.get('iss')!r} exp={_payload.get('exp')!r} now={int(time.time())}"
+            )
+        else:
+            # 身份声明解析：对 ADFS 声明规则差异容错，缺失时返回 None
+            identity = x_oauth.resolve_identity_claims(payload_data)
+            if identity is None:
+                logger.warning(
+                    f"{_rid()}OAuth 身份声明解析失败: keys={sorted(payload_data.keys())}"
+                )
+                payload_data = None
+            else:
+                payload_data["_identity"] = identity
+                logger.info(
+                    f"{_rid()}OAuth 身份解析成功: upn_claim={identity['upn_claim']} "
+                    f"email_claim={identity['email_claim']}"
+                )
+    elif data.oauth_token:
+        # 旧隐式流兼容：仅结构+有效期校验，逐步淘汰
+        payload_data = _decode_oauth_payload(data.oauth_token)
+
+    if payload_data is None:
+        return _resp(401, "Invalid OAuth Token")
+
     maker = get_session()
     async with maker() as session:
         try:
-            payload_data = _decode_oauth_payload(data.oauth_token)
-            if payload_data is None:
-                return _resp(401, "Invalid OAuth Token")
-            upn = _sanitize_header(payload_data.get("upn"))
-            email = _sanitize_header(payload_data.get("email"))
-            name = _sanitize_header(payload_data.get("CUHKSZ-DisplayName", ""))
+            identity = payload_data.pop("_identity", None) or {}
+            upn = _sanitize_header(identity.get("upn") or payload_data.get("upn"))
+            email = _sanitize_header(identity.get("email") or payload_data.get("email"))
+            name = _sanitize_header(
+                identity.get("display_name") or payload_data.get("CUHKSZ-DisplayName", "")
+            )
             try:
                 number = name.split(",")[1].strip().split(")")[0].strip()
             except Exception:

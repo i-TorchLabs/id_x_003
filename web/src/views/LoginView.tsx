@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Input, InputGroup, Label, TextField, toast } from "@heroui/react";
 import { loginApi } from "@/api/user";
 import { useUserStore, type UserState } from "@/context/UserContext";
-import { SITE_URL } from "@/utils/config";
+import { redirectToAdfsAuthorize } from "@/utils/sso";
 
 export default function LoginView() {
   const [username, setUsername] = useState("");
@@ -57,7 +57,7 @@ export default function LoginView() {
   };
 
   const onJump = () => {
-    window.location.href = `${SITE_URL}/s/aa/login`;
+    redirectToAdfsAuthorize();
   };
 
   return (
@@ -75,6 +75,12 @@ export default function LoginView() {
             <div className="mb-8 font-bold text-[32px]">Activity Management System</div>
             <div className="mb-8 font-normal text-[25px]">AA Login In</div>
             <div className="w-3/5">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!loading) onLogin();
+                }}
+              >
               <div className="w-full">
                 <TextField value={username} onChange={setUsername}>
                   <InputGroup>
@@ -121,12 +127,13 @@ export default function LoginView() {
                 <Button
                   variant="primary"
                   fullWidth
+                  type="submit"
                   isPending={loading}
-                  onPress={onLogin}
                 >
                   Login
                 </Button>
               </div>
+              </form>
               <div className="mt-6">
                 <Button
                   fullWidth

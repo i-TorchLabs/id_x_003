@@ -33,6 +33,25 @@ import ActivityForm, {
   type ActivityFormValue,
 } from "@/components/aa/ActivityForm";
 
+/** 分页器可见页码: 页数过多时只显示当前页附近的窗口, 并用省略号表示被省略的部分 */
+const getVisiblePages = (totalPages: number, current: number, sibling = 1): (number | "ellipsis")[] => {
+  const MAX_ITEMS = 7; // first + last + current + 2*sibling + 最多2个省略号
+  if (totalPages <= MAX_ITEMS) return Array.from({ length: totalPages }, (_, i) => i + 1);
+
+  const pages = new Set<number>([1, totalPages]);
+  for (let i = Math.max(1, current - sibling); i <= Math.min(totalPages, current + sibling); i++) {
+    pages.add(i);
+  }
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+
+  const result: (number | "ellipsis")[] = [];
+  sorted.forEach((n, idx) => {
+    if (idx > 0 && n - sorted[idx - 1] > 1) result.push("ellipsis");
+    result.push(n);
+  });
+  return result;
+};
+
 /** datetime-local 值 (yyyy-MM-ddTHH:mm) -> 接口格式 (yyyy-MM-dd HH:mm) */
 const dateTimeToStr = (value: string): string | undefined =>
   value ? value.replace("T", " ") : undefined;
@@ -381,12 +400,12 @@ export default function ActivityManagementView() {
         </Table.ScrollContainer>
       </Table>
 
-      <div className="flex justify-end p-4 bg-white">
+      <div className="flex justify-end p-4 bg-white max-w-full overflow-x-auto">
         <Pagination aria-label="pagination">
           <Pagination.Summary>
             {page} / {totalPages}
           </Pagination.Summary>
-          <Pagination.Content>
+          <Pagination.Content className="flex flex-wrap">
             <Pagination.Item>
               <Pagination.Previous
                 onPress={() => handlePageChange(page - 1)}
@@ -395,16 +414,24 @@ export default function ActivityManagementView() {
                 <Pagination.PreviousIcon />
               </Pagination.Previous>
             </Pagination.Item>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
-              <Pagination.Item key={n}>
-                <Pagination.Link
-                  isActive={n === page}
-                  onPress={() => handlePageChange(n)}
-                >
-                  {n}
-                </Pagination.Link>
-              </Pagination.Item>
-            ))}
+            {getVisiblePages(totalPages, page).map((n, idx) =>
+              n === "ellipsis" ? (
+                <Pagination.Item key={`ellipsis-${idx}`}>
+                  <span className="inline-flex h-9 min-w-9 items-center justify-center text-sm text-default-400 select-none">
+                    …
+                  </span>
+                </Pagination.Item>
+              ) : (
+                <Pagination.Item key={n}>
+                  <Pagination.Link
+                    isActive={n === page}
+                    onPress={() => handlePageChange(n)}
+                  >
+                    {n}
+                  </Pagination.Link>
+                </Pagination.Item>
+              ),
+            )}
             <Pagination.Item>
               <Pagination.Next
                 onPress={() => handlePageChange(page + 1)}

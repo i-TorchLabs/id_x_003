@@ -55,7 +55,15 @@ class LogoutInput:
 
 @strawberry.input
 class OauthInput:
-    oauth_token: str = strawberry.field(description="SSO OAuth Token")
+    """学生 SSO 登录入参：ADFS 授权码授予流。
+
+    - 优先使用 code（授权码，服务端用 client_secret 换 id_token，最安全）；
+    - state 用于 CSRF 校验，由前端生成并在回调时原样回传；
+    - oauth_token 仅为旧隐式流兼容保留，新流程不应使用。
+    """
+    code: str = strawberry.field(default="", description="ADFS 授权码（response_type=code 回调获得）")
+    state: str = strawberry.field(default="", description="CSRF 防护随机串（与授权请求一致）")
+    oauth_token: str = strawberry.field(default="", description="[已废弃] 旧隐式流 access_token")
 
 
 # ===== 学生端 =====

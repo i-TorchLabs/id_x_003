@@ -286,8 +286,8 @@ export const loginApi = async (data: {
   throw err;
 };
 
-/** 学生 SSO 登录(首次自动建档) */
-export const userAcitvityOauthApi = async (oauthToken: string) => {
+/** 学生 SSO 登录(首次自动建档)：ADFS 授权码授予流 */
+export const userAcitvityOauthApi = async (code: string, state: string) => {
   return await callApi<{
     check: string;
     username: string;
@@ -298,8 +298,26 @@ export const userAcitvityOauthApi = async (oauthToken: string) => {
     `mutation UserActivityOauth($data: OauthInput!) {
       userActivityOauth(data: $data) { code msg data }
     }`,
-    { data: { oauthToken } }
+    { data: { code, state } }
   );
+};
+
+/**
+ * 登出：使服务端会话 key 失效（key 置为 N/A），学生/管理员共用。
+ * 刻意绕过 callApi 的 401 会话失效处理——调用方紧跟着就会跳走，
+ * 避免 handleSessionExpired 与 ADFS 登出跳转产生竞态。
+ */
+export const userLogoutApi = async (userId: string | number): Promise<void> => {
+  const data = await graphqlRequest(
+    `mutation Logout($data: LogoutInput!) {
+      logout(data: $data) { code msg data }
+    }`,
+    { data: { userId: Number(userId) } }
+  );
+  const resp = data.logout as ApiResponse;
+  if (resp.code !== 200) {
+    throw new Error(resp.msg || "登出失败");
+  }
 };
 
 export const userAcitvityListApi = async (data: UserAcitvityListReq & { fuzzy_name?: string }) => {
