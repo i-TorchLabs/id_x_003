@@ -19,6 +19,7 @@ import {
   type AdminActivityNameListRes,
 } from "@/api/admin";
 import { downloadBase64 } from "@/utils/download";
+import { getVisiblePages } from "@/utils/pagination";
 import QueryManagement, {
   type QueryManagementRef,
 } from "@/components/aa/QueryManagement";
@@ -180,22 +181,28 @@ export default function ReportExportView() {
                 ))}
               </div>
             </CheckboxGroup>
-            <div className="flex justify-end mt-2">
+            <div className="flex justify-end mt-2 max-w-full overflow-x-auto">
               <Pagination aria-label="pagination">
                 <Pagination.Summary>
                   {page} / {totalPages} (Total: {itemCount})
                 </Pagination.Summary>
-                <Pagination.Content>
+                <Pagination.Content className="flex flex-wrap">
                   <Pagination.Item>
                     <Pagination.Previous
-                      isDisabled={page <= 1}
+                      isDisabled={page <= 1 || loading}
                       onPress={() => handlePageChange(page - 1)}
                     >
                       <Pagination.PreviousIcon />
                     </Pagination.Previous>
                   </Pagination.Item>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (n) => (
+                  {getVisiblePages(totalPages, page).map((n, idx) =>
+                    n === "ellipsis" ? (
+                      <Pagination.Item key={`ellipsis-${idx}`}>
+                        <span className="inline-flex h-9 min-w-9 items-center justify-center text-sm text-default-400 select-none">
+                          …
+                        </span>
+                      </Pagination.Item>
+                    ) : (
                       <Pagination.Item key={n}>
                         <Pagination.Link
                           isActive={n === page}
@@ -204,11 +211,11 @@ export default function ReportExportView() {
                           {n}
                         </Pagination.Link>
                       </Pagination.Item>
-                    )
+                    ),
                   )}
                   <Pagination.Item>
                     <Pagination.Next
-                      isDisabled={page >= totalPages}
+                      isDisabled={page >= totalPages || loading}
                       onPress={() => handlePageChange(page + 1)}
                     >
                       <Pagination.NextIcon />
