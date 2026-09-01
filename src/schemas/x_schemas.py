@@ -177,8 +177,8 @@ class ActivityExportInput:
 @strawberry.input
 class QueryDataInput:
     title: List[str] = strawberry.field(default_factory=list, description="活动名称列表")
-    start_time: Optional[int] = strawberry.field(default=None, description="开始时间（毫秒时间戳）")
-    end_time: Optional[int] = strawberry.field(default=None, description="结束时间（毫秒时间戳）")
+    start_time: Optional[str] = strawberry.field(default=None, description="开始时间（毫秒时间戳）")
+    end_time: Optional[str] = strawberry.field(default=None, description="结束时间（毫秒时间戳）")
     offset: int = strawberry.field(default=1, description="页码")
     limit: int = strawberry.field(default=10, description="每页数量")
 

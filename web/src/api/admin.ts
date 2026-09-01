@@ -695,8 +695,8 @@ export const queryDataSearchApi = async (data: QueryDataSearchApiReq) => {
     {
       data: {
         title: data.title ?? [],
-        startTime: startMs === null ? null : Number(startMs),
-        endTime: endMs === null ? null : Number(endMs),
+        startTime: startMs,
+        endTime: endMs,
         offset: toPage(data.offset),
         limit: toPage(data.limit),
       },
