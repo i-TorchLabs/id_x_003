@@ -146,9 +146,6 @@ export default function LoginView() {
               </div>
             </div>
             <br />
-            <div className="text-[darkred]">
-              Please connect a VPN to use if you are outside the school.
-            </div>
           </div>
         </div>
       </div>

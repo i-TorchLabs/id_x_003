@@ -169,14 +169,28 @@ export default function ReportExportView() {
       ) : (
         <Card>
           <Card.Content>
-            <CheckboxGroup aria-label="activity names" value={nameIds} onChange={setNameIds}>
+            <CheckboxGroup
+              aria-label="activity names"
+              value={nameIds}
+              onChange={(v) => {
+                setNameIds(v);
+                setSelectAllState(
+                  nameList.length > 0 && v.length === nameList.length
+                );
+              }}
+            >
               <div className="grid grid-cols-3 gap-x-3 gap-y-2">
                 {nameList.map((item) => (
                   <Checkbox
                     key={item.activity_name}
                     value={item.activity_name}
                   >
-                    {item.activity_name}
+                    <Checkbox.Content>
+                      <Checkbox.Control>
+                        <Checkbox.Indicator />
+                      </Checkbox.Control>
+                      {item.activity_name}
+                    </Checkbox.Content>
                   </Checkbox>
                 ))}
               </div>
