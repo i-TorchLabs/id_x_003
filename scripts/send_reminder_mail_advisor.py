@@ -10,22 +10,39 @@ import time
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
 import psycopg2
 from psycopg2.extras import DictCursor
 
+ENV_PATH = Path(__file__).resolve().parents[1] / "ops" / ".env"
+
+
+def load_env(path):
+    env = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        env[key.strip()] = value.strip().strip('"').strip("'")
+    return env
+
+
+ENV = load_env(ENV_PATH)
+
 CONFIG = {
-    "host": "localhost",
-    "port": 15432,
+    "host": "127.0.0.1",
+    "port": 35432,
     "user": "postgres",
-    "password": "P@ssmickey233!",
-    "database": "sme_cdc_enlist_aa",
+    "password": ENV["POSTGRES_PASSWORD"],
+    "database": "id_x_003",
 }
 
 MAIL_SERVER = "mail.cuhk.edu.cn"
 MAIL_PORT = 587
 MAIL_USER = "careersme@cuhk.edu.cn"
-MAIL_PASSWORD = "n04n8#X4O48@4Gh0oqw93"
+MAIL_PASSWORD = ENV.get("AA_MAIL_PASSWORD", "")
 MAIL_FROM = "careersme@cuhk.edu.cn"
 MAIL_CC = "careersme@cuhk.edu.cn"
 
@@ -36,99 +53,94 @@ SQL_4 = "SELECT * FROM aa_enlist_project WHERE id = %s;"
 SQL_5 = "SELECT * FROM aa_owner_info WHERE name = %s;"
 
 
+def send_mail(to_addr, activity_name, student_name, activity_start_time, activity_end_time, html):
+    message = MIMEMultipart("alternative")
+    message["Subject"] = "[Reminder] Alumni Advising Counselling with " + activity_name
+    message["From"] = MAIL_FROM
+    message["Cc"] = MAIL_CC
+    message["To"] = to_addr
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    print(f"[reminder.mail.advisor][{current_time}] Subject:", message["Subject"])
+    print(f"[reminder.mail.advisor][{current_time}] From:", message["From"])
+    print(f"[reminder.mail.advisor][{current_time}] Cc:", message["Cc"])
+    print(f"[reminder.mail.advisor][{current_time}] To:", message["To"])
+    html_msg = html.format(
+        _title=activity_name,
+        _student_name=student_name,
+        _date=activity_start_time.strftime("%Y-%m-%d"),
+        _start_time=activity_start_time.strftime("%H:%M"),
+        _end_time=activity_end_time.strftime("%H:%M"),
+    )
+    message.attach(MIMEText(html_msg, "html"))
+    recipients = [to_addr] + ([MAIL_CC] if MAIL_CC else [])
+    with smtplib.SMTP(MAIL_SERVER, MAIL_PORT) as server:
+        server.starttls()
+        server.login(MAIL_USER, MAIL_PASSWORD)
+        server.sendmail(MAIL_FROM, recipients, message.as_string())
+
+
 def main():
-    now_time = time.strftime("%Y-%m-%d %H:%M:%S")
+    print("#" * 10, " send_reminder_mail_advisor ", time.strftime("%Y-%m-%d %H:%M:%S"), "#" * 10)
 
-    print("#" * 10, " send_reminder_mail_advisor ", now_time, "#" * 10)
-
+    today = datetime.now().date()
     conn = psycopg2.connect(**CONFIG)
-    with conn.cursor(cursor_factory=DictCursor) as cur:
-        cur.execute(SQL_1)
-        res = cur.fetchall()
-        for row in res:
-            student_name = row.get("name", "N/A")
-            sql_2 = SQL_2.format(_id=row.get("activity_id", "1"))
-            cur.execute(sql_2, (row.get("activity_id", "1"),))
-            result = cur.fetchall()
-            if not result:
-                continue
-            result = result[0]
-            project_id = result.get("project_id")
-            activity_name = result.get("name")
-            activity_start_time = result.get("activity_start_time")
-            start_time = activity_start_time.strftime("%Y-%m-%d")
-            s_time = start_time.split(" ")[0].split("-")
-            specified_datetime = datetime(
-                int(s_time[0]), int(s_time[1]), int(s_time[2])
-            )
-            one_day_before = specified_datetime - timedelta(days=1)
-            today = datetime.now()
-            if not one_day_before.date() == today.date():
-                continue
-            activity_end_time = result.get("activity_end_time")
-            sql_4 = SQL_4.format(_id=project_id)
-            cur.execute(sql_4, (project_id,))
-            result = cur.fetchall()
-            if not result:
-                continue
-            result = result[0]
-            owner_name = result.get("owner", "N/A")
-            sql_5 = SQL_5.format(_owner_name=owner_name)
-            cur.execute(sql_5, (owner_name,))
-            result = cur.fetchall()
-            if not result:
-                continue
-            result = result[0]
-            owner_email = result.get("email")
+    try:
+        with conn.cursor(cursor_factory=DictCursor) as cur:
+            # 邮件模板只需查询一次
             cur.execute(SQL_3)
-            result = cur.fetchall()
-            result = result[0]
-            html = result.get("html")
-            message = MIMEMultipart("alternative")
-            message["Subject"] = (
-                "[Reminder] Alumni Advising Counselling with " + activity_name
-            )
-            message["From"] = MAIL_FROM
-            message["Cc"] = MAIL_CC
-            message["To"] = owner_email
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-            print(
-                f"[reminder.mail.advisor][{current_time}] Subject: ", message["Subject"]
-            )
-            print(f"[reminder.mail.advisor][{current_time}] From: ", message["From"])
-            print(f"[reminder.mail.advisor][{current_time}] Cc: ", message["Cc"])
-            print(f"[reminder.mail.advisor][{current_time}] To: ", message["To"])
-            html_msg = html.format(
-                _title=activity_name,
-                _student_name=student_name,
-                _date=activity_start_time.strftime("%Y-%m-%d"),
-                _start_time=activity_start_time.strftime("%H:%M"),
-                _end_time=activity_end_time.strftime("%H:%M"),
-            )
-            part = MIMEText(html_msg, "html")
-            message.attach(part)
+            tpl = cur.fetchone()
+            if not tpl:
+                print("未找到提醒邮件模板 (type='reminder-advisor')")
+                return
+            html = tpl["html"]
 
-            smtp_server = MAIL_SERVER
-            smtp_port = MAIL_PORT
-            smtp_user = MAIL_USER
-            smtp_password = MAIL_PASSWORD
+            cur.execute(SQL_1)
+            rows = cur.fetchall()
+            for row in rows:
+                try:
+                    student_name = row.get("name", "N/A")
 
-            server = None
-            try:
-                server = smtplib.SMTP(smtp_server, smtp_port)
-                server.starttls()
-                to_addr = message["To"]
-                cc_addr = message["Cc"]
-                all_recipients = [to_addr] if isinstance(to_addr, str) else to_addr
-                if cc_addr:
-                    all_recipients.append(cc_addr)
-                server.login(smtp_user, smtp_password)
-                server.sendmail(MAIL_FROM, all_recipients, message.as_string())
-            except Exception as e:
-                print("邮件发送失败", e)
-            finally:
-                if server:
-                    server.quit()
+                    cur.execute(SQL_2, (row.get("activity_id", "1"),))
+                    activity = cur.fetchone()
+                    if not activity:
+                        continue
+                    project_id = activity.get("project_id")
+                    activity_name = activity.get("name")
+                    activity_start_time = activity.get("activity_start_time")
+                    activity_end_time = activity.get("activity_end_time")
+                    if not activity_start_time or not activity_end_time:
+                        continue
+
+                    # 只在活动开始前一天发送提醒
+                    if activity_start_time.date() - timedelta(days=1) != today:
+                        continue
+
+                    cur.execute(SQL_4, (project_id,))
+                    project = cur.fetchone()
+                    if not project:
+                        continue
+                    owner_name = project.get("owner", "N/A")
+
+                    cur.execute(SQL_5, (owner_name,))
+                    owner = cur.fetchone()
+                    if not owner:
+                        continue
+                    owner_email = owner.get("email")
+                    if not owner_email:
+                        continue
+
+                    send_mail(
+                        owner_email,
+                        activity_name,
+                        student_name,
+                        activity_start_time,
+                        activity_end_time,
+                        html,
+                    )
+                    print("已发送顾问提醒邮件: apply_id=%s to=%s" % (row.get("id"), owner_email))
+                except Exception as e:
+                    print("处理报名记录失败 id=%s: %s" % (row.get("id"), e))
+    finally:
         conn.close()
 
 
