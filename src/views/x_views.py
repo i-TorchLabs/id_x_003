@@ -91,13 +91,9 @@ MAIL_PASSWORD = os.environ.get("AA_MAIL_PASSWORD", "")
 MAX_UPLOAD_BYTES = _env_int("AA_MAX_UPLOAD_BYTES", 10 * 1024 * 1024)
 
 SLOT_LIST = [
-    "08:00-08:20", "08:30-08:50", "09:00-09:20", "09:30-09:50",
-    "10:00-10:20", "10:30-10:50", "11:00-11:20", "11:30-11:50",
-    "12:00-12:20", "12:30-12:50", "13:00-13:20", "13:30-13:50",
-    "14:00-14:20", "14:30-14:50", "15:00-15:20", "15:30-15:50",
-    "16:00-16:20", "16:30-16:50", "17:00-17:20", "17:30-17:50",
-    "18:00-18:20", "18:30-18:50", "19:00-19:20", "19:30-19:50",
-    "20:00-20:20", "20:30-20:50", "21:00-21:20", "21:30-21:50",
+    "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "12:00-13:00",
+    "13:00-14:00", "14:00-15:00", "15:00-16:00", "16:00-17:00", "17:00-18:00",
+    "18:00-19:00", "19:00-20:00", "20:00-21:00", "21:00-22:00"
 ]
 
 
@@ -1852,7 +1848,7 @@ async def view_manage_activity_download(info: Info) -> FileResponse:
         ws.append(date_list)
         ws.append(week_list)
 
-        for i in range(3, 31):
+        for i in range(3, 17):
             ws[f"A{i}"] = SLOT_LIST[i - 3]
 
         thin_border = Border(
@@ -1861,7 +1857,7 @@ async def view_manage_activity_download(info: Info) -> FileResponse:
             top=Side(style="thin"),
             bottom=Side(style="thin"),
         )
-        for row in ws["A1:O30"]:
+        for row in ws["A1:O16"]:
             for cell in row:
                 cell.border = thin_border
 
