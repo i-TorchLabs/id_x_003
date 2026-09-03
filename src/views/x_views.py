@@ -738,7 +738,7 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
                 "_end_time": activity.activity_end_time.strftime("%H:%M") if activity.activity_end_time else "",
             }
 
-            mail_subject = "Your sign-up: successful"
+            mail_subject = "您的校友顾问咨询预约已成功确认！Your Alumni Consultation is Confirmed!"
             project = await _first(session, select(AaEnlistProject).where(
                 AaEnlistProject.id == activity.project_id
             ))
@@ -773,7 +773,7 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
                     AaHtmlTemplate.type == "submit_ex"
                 ))
                 ex_html = template.html.format(**msg) if template else ""
-                ex_subject = f"校友咨询预约提醒-[{user.name}]"
+                ex_subject = f"【咨询提醒】 [{user.name}] 已预约您的咨询"
                 _send_mail(
                     mail_subject=ex_subject,
                     mail_from=MAIL_FROM,
