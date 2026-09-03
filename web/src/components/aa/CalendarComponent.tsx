@@ -50,7 +50,6 @@ const CalendarComponent = forwardRef<CalendarComponentRef, CalendarComponentProp
         eventDisplay="block"
         datesSet={(arg) => {
           setTimeout(() => {
-            if (!calendarEvents.length) return;
             onUpdateCalendarTitle?.(arg.view.title);
           });
         }}

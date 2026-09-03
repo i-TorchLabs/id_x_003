@@ -102,33 +102,38 @@ export default function UserHomeView() {
   const getData = useCallback(
     async (page: number, pageSize: number, view: string) => {
       setLoading(true)
-      const { detail, date, week, total } = await userAcitvityListApi({
-        ...formValue,
-        user_id: userStore.state.userId,
-        offset: page.toString(),
-        limit: pageSize.toString()
-      })
-      setData(detail)
-      setDateReactive({ date, week })
-      setCalendarDate(date)
-      calendarRef.current?.calendarApi?.gotoDate(dayjs(date).format('YYYY-MM-DD'))
-      setPagination((p) => ({ ...p, itemCount: Number(total) }))
-      setLoading(false)
-      if (view === 'calendar') {
-        setCalendarEvents(
-          detail.map((item, index) => ({
-            ...item,
-            title: item.activity_name,
-            start: item.start_time,
-            end: item.end_time,
-            color:
-              item.state === '0'
-                ? disabledColor(index)
-                : item.state === '1'
-                  ? activeColor(index)
-                  : fullColor(index)
-          })) as EventInput[]
-        )
+      try {
+        const { detail, date, week, total } = await userAcitvityListApi({
+          ...formValue,
+          user_id: userStore.state.userId,
+          offset: page.toString(),
+          limit: pageSize.toString()
+        })
+        setData(detail)
+        setDateReactive({ date, week })
+        setCalendarDate(date)
+        calendarRef.current?.calendarApi?.gotoDate(dayjs(date).format('YYYY-MM-DD'))
+        setPagination((p) => ({ ...p, itemCount: Number(total) }))
+        if (view === 'calendar') {
+          setCalendarEvents(
+            detail.map((item, index) => ({
+              ...item,
+              title: item.activity_name,
+              start: item.start_time,
+              end: item.end_time,
+              color:
+                item.state === '0'
+                  ? disabledColor(index)
+                  : item.state === '1'
+                    ? activeColor(index)
+                    : fullColor(index)
+            })) as EventInput[]
+          )
+        }
+      } catch (e) {
+        console.error('Failed to load activities', e)
+      } finally {
+        setLoading(false)
       }
     },
     [formValue, userStore.state.userId]
@@ -246,7 +251,12 @@ export default function UserHomeView() {
         >
           {activityViews.map((view) => (
             <Radio className="capitalize" key={view} value={view}>
-              {view}
+              <Radio.Content>
+                <Radio.Control>
+                  <Radio.Indicator />
+                </Radio.Control>
+                {view}
+              </Radio.Content>
             </Radio>
           ))}
         </RadioGroup>
@@ -359,7 +369,12 @@ export default function UserHomeView() {
             >
               {calendarViews.map((view) => (
                 <Radio key={view.value} value={view.value}>
-                  {view.label}
+                  <Radio.Content>
+                    <Radio.Control>
+                      <Radio.Indicator />
+                    </Radio.Control>
+                    {view.label}
+                  </Radio.Content>
                 </Radio>
               ))}
             </RadioGroup>
