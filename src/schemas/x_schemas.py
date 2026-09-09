@@ -116,6 +116,7 @@ class ProjectUpdateInput:
     project_name: str = strawberry.field(description="项目名称")
     project_content: str = strawberry.field(description="项目内容")
     quota: str = strawberry.field(description="名额")
+    owner: str = strawberry.field(default="N/A", description="所属顾问")
 
 
 @strawberry.input

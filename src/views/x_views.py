@@ -961,6 +961,10 @@ async def view_user_activity_oauth(info: Info, data: OauthInput) -> ApiResponse:
             identity = payload_data.pop("_identity", None) or {}
             upn = _sanitize_header(identity.get("upn") or payload_data.get("upn"))
             email = _sanitize_header(identity.get("email") or payload_data.get("email"))
+            # upn 缺失时回退到 email 作为账号标识，避免落库空串导致后续邮件 subject 等出现 [] 空占位
+            if not upn:
+                upn = email or "N/A"
+                logger.warning(f"{_rid()}OAuth upn 缺失，回退为 {upn}")
             name = _sanitize_header(
                 identity.get("display_name") or payload_data.get("CUHKSZ-DisplayName", "")
             )
@@ -1167,6 +1171,7 @@ async def view_manage_project_update(info: Info, data: ProjectUpdateInput) -> Ap
             obj.name = data.project_name
             obj.content = data.project_content
             obj.quota = data.quota
+            obj.owner = data.owner or "N/A"
             obj.update = datetime.now()
             await session.commit()
 
@@ -1175,6 +1180,7 @@ async def view_manage_project_update(info: Info, data: ProjectUpdateInput) -> Ap
                 "project_name": str(obj.name),
                 "proudct_content": obj.content,
                 "quota": str(obj.quota),
+                "owner": str(obj.owner),
                 "update": obj.update.isoformat() if obj.update else "",
             })
         except Exception as e:

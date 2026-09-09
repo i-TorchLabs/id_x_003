@@ -86,6 +86,10 @@ export interface AdminProjectUpdateReq {
    * 名额
    */
   quota: string
+  /**
+   * 所属顾问
+   */
+  owner: string
 }
 
 export interface AdminProjectSearchReq {
@@ -494,6 +498,7 @@ export const adminProjectUpdateApi = async (data: AdminProjectUpdateReq) => {
         projectName: data.project_name,
         projectContent: data.project_content,
         quota: data.quota,
+        owner: data.owner ?? "N/A",
       },
     }
   );
