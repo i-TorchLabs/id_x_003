@@ -4,13 +4,13 @@
 
 **咨询主题发布 → 时段排期 → 学生报名 → 邮件提醒 → 数据导出，全流程线上化的一对一咨询预约平台**
 
-<img src="https://img.shields.io/static/v1?label=编号&message=id_x_003&color=lightgray&style=flat-square&labelColor=black" alt="编号">
-<img src="https://img.shields.io/static/v1?label=协议&message=AGPL-3.0&color=lightgray&style=flat-square&labelColor=black" alt="协议">
-<img src="https://img.shields.io/static/v1?label=作者&message=i-Torch&color=lightgray&style=flat-square&labelColor=black" alt="作者">
-<img src="https://img.shields.io/static/v1?label=组织&message=SME CDC&color=lightgray&style=flat-square&labelColor=black" alt="组织">
-<img src="https://img.shields.io/static/v1?label=引擎&message=Litestar + Strawberry GraphQL&color=lightgray&style=flat-square&labelColor=black" alt="引擎">
-<img src="https://img.shields.io/static/v1?label=语言&message=Python 3.10 / TypeScript&color=lightgray&style=flat-square&labelColor=black" alt="语言">
-<img src="https://img.shields.io/static/v1?label=数据库&message=PostgreSQL 18&color=lightgray&style=flat-square&labelColor=black" alt="数据库">
+![编号](https://img.shields.io/static/v1?label=%E7%BC%96%E5%8F%B7&message=id_x_003&color=%234B5320&style=flat-square&labelColor=black)
+![协议](https://img.shields.io/static/v1?label=%E5%8D%8F%E8%AE%AE&message=AGPL--3.0&color=%234B5320&style=flat-square&labelColor=black)
+![作者](https://img.shields.io/static/v1?label=%E4%BD%9C%E8%80%85&message=i--Torch&color=%234B5320&style=flat-square&labelColor=black)
+![组织](https://img.shields.io/static/v1?label=%E7%BB%84%E7%BB%87&message=SME%20CDC&color=%234B5320&style=flat-square&labelColor=black)
+![引擎](https://img.shields.io/static/v1?label=%E5%BC%95%E6%93%8E&message=Litestar%20%2B%20Strawberry&color=%234B5320&style=flat-square&labelColor=black)
+![语言](https://img.shields.io/static/v1?label=%E8%AF%AD%E8%A8%80&message=Python%203.10%20%2B%20TypeScript&color=%234B5320&style=flat-square&labelColor=black)
+![数据库](https://img.shields.io/static/v1?label=%E6%95%B0%E6%8D%AE%E5%BA%93&message=PostgreSQL%2018&color=%234B5320&style=flat-square&labelColor=black)
 
 </div>
 
