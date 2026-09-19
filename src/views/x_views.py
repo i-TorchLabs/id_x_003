@@ -763,13 +763,13 @@ async def view_user_activity_apply(info: Info, data: UserActivityApplyInput) -> 
                     "_start_time": activity.activity_start_time.strftime("%H:%M") if activity.activity_start_time else "",
                     "_end_time": activity.activity_end_time.strftime("%H:%M") if activity.activity_end_time else "",
                     "_teacher_name": owner.name,
-                    "_student_name": user.name,
+                    "_student_name": user.name or (user.email.split("@")[0] if user.email else ""),
                 }
                 template = await _first(session, select(AaHtmlTemplate).where(
                     AaHtmlTemplate.type == "submit_ex"
                 ))
                 ex_html = template.html.format(**msg) if template else ""
-                ex_subject = f"【咨询提醒】 [{user.name}] 已预约您的咨询"
+                ex_subject = f"【咨询提醒】 [{user.name or (user.email.split('@')[0] if user.email else '')}] 已预约您的咨询"
                 _send_mail(
                     mail_subject=ex_subject,
                     mail_from=MAIL_FROM,
