@@ -13,7 +13,7 @@ INSERT INTO aa_enlist_user (
     time
 ) VALUES (
     1,
-    'master',
+    'rayzha@cuhk.edu.cn',
     'WWxkR2VtUkhWbms9',
     'admin',
     'N/A',
