@@ -69,6 +69,14 @@ from x_models.id_x_003.src.schemas.x_schemas import (
 )
 from x_models.id_x_003.src.utils import x_crypto, x_oauth
 
+# ===== 进程级时区锚定（Asia/Shanghai, UTC+8） =====
+# 防 Docker 容器未设 TZ 或本地裸跑导致 datetime.now()/fromtimestamp() 回退 UTC：
+# setdefault 不覆盖已由 Dockerfile/compose 注入的 TZ，time.tzset() 使 C 库 localtime 即时生效。
+# 此后所有 datetime.now()、datetime.fromtimestamp() 及 datetime.now().timestamp() 均基于 UTC+8。
+os.environ.setdefault("TZ", "Asia/Shanghai")
+if hasattr(time, "tzset"):  # POSIX-only; Windows 无此方法但容器/开发机均为 Linux/macOS
+    time.tzset()
+
 # ===== 常量（与原系统一致） =====
 WEEK_LIST = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 

@@ -9,6 +9,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Shanghai
     ports:
       - "35432:5432"
     volumes:
@@ -47,6 +48,7 @@ services:
       AA_OAUTH_CLOCK_SKEW_SECONDS: ${AA_OAUTH_CLOCK_SKEW_SECONDS:-300}
       AA_OAUTH_NONCE: ${AA_OAUTH_NONCE:-}
       PROJECT_PATH: /app/i-Core
+      TZ: Asia/Shanghai
     volumes:
       # 日志挂载:宿主机 x_models/id_x_003/logs -> 容器日志目录 /app/i-Core/logs
       # (日志路径由 utils/log_util.py 按 PROJECT_PATH + config 中 logs/*.log 解析)
@@ -62,6 +64,8 @@ services:
     image: id_x_003_web:latest
     container_name: id_x_003_web
     restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
     depends_on:
       - service
 

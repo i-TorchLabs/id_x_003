@@ -40,6 +40,7 @@ if ! podman container exists "${PLUGIN}_db"; then
         -e POSTGRES_DB="${POSTGRES_DB}" \
         -e POSTGRES_USER="${POSTGRES_USER}" \
         -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+        -e TZ=Asia/Shanghai \
         --expose 5432 \
         -v "${PLUGIN}_db_data:/var/lib/postgresql" \
         -v "${OPS_DIR}/init:/docker-entrypoint-initdb.d:ro" \
@@ -65,6 +66,7 @@ if ! podman container exists "${PLUGIN}_service"; then
         -e AA_OAUTH_CLIENT_SECRET="${AA_OAUTH_CLIENT_SECRET:-}" \
         -e AA_OAUTH_REDIRECT_URI="${AA_OAUTH_REDIRECT_URI:-}" \
         -e PROJECT_PATH=/app/i-Core \
+        -e TZ=Asia/Shanghai \
         "${PLUGIN}_service"
 fi
 

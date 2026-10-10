@@ -13,9 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM python:3.10-slim
 WORKDIR /app/i-Core
 
-# 运行时依赖：libpq（psycopg2）、curl（健康检查）
+# 运行时依赖：libpq（psycopg2）、curl（健康检查）、tzdata（时区数据）
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 curl \
+    libpq5 curl tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -u 10001 -m appuser
 
@@ -33,7 +34,8 @@ RUN mkdir -p /app/i-Core/logs && chown -R appuser:appuser /app/i-Core
 
 ENV PROJECT_PATH=/app/i-Core \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    TZ=Asia/Shanghai
 
 USER appuser
 EXPOSE 7000

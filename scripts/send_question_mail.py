@@ -5,6 +5,7 @@
 # 0 */2 * * * /usr/bin/python /home/x/Desktop/codeSpace/i-Core/x_models/id_x_003/scripts/send_question_mail.py >> /var/log/cron/send_aa_question_mail.log 2>&1
 #
 
+import os
 import smtplib
 import time
 from datetime import datetime, timedelta
@@ -14,6 +15,10 @@ from pathlib import Path
 
 import psycopg2
 from psycopg2.extras import DictCursor
+
+os.environ.setdefault("TZ", "Asia/Shanghai")
+if hasattr(time, "tzset"):
+    time.tzset()
 
 ENV_PATH = Path(__file__).resolve().parents[1] / "ops" / ".env"
 
