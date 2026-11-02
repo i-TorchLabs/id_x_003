@@ -2,292 +2,350 @@
 
 # id_x_003: SME 校友咨询（Alumni Advising）预约系统
 
-**咨询主题发布 → 时段排期 → 学生报名 → 邮件提醒 → 数据导出，全流程线上化的一对一咨询预约平台**
+**把「找校友咨询」从邮件与微信沟通，升级为全流程自助式在线预约**
 
-![编号](https://img.shields.io/static/v1?label=%E7%BC%96%E5%8F%B7&message=id_x_003&color=%234B5320&style=flat-square&labelColor=black)
-![协议](https://img.shields.io/static/v1?label=%E5%8D%8F%E8%AE%AE&message=AGPL--3.0&color=%234B5320&style=flat-square&labelColor=black)
-![作者](https://img.shields.io/static/v1?label=%E4%BD%9C%E8%80%85&message=i--Torch&color=%234B5320&style=flat-square&labelColor=black)
-![组织](https://img.shields.io/static/v1?label=%E7%BB%84%E7%BB%87&message=SME%20CDC&color=%234B5320&style=flat-square&labelColor=black)
-![引擎](https://img.shields.io/static/v1?label=%E5%BC%95%E6%93%8E&message=Litestar%20%2B%20Strawberry&color=%234B5320&style=flat-square&labelColor=black)
-![语言](https://img.shields.io/static/v1?label=%E8%AF%AD%E8%A8%80&message=Python%203.10%20%2B%20TypeScript&color=%234B5320&style=flat-square&labelColor=black)
-![数据库](https://img.shields.io/static/v1?label=%E6%95%B0%E6%8D%AE%E5%BA%93&message=PostgreSQL%2018&color=%234B5320&style=flat-square&labelColor=black)
+![ID](https://img.shields.io/static/v1?label=ID&message=003&color=C3272B&style=for-the-badge&labelColor=555)
+![License](https://img.shields.io/static/v1?label=License&message=AGPL-3.0&color=C3272B&style=for-the-badge&labelColor=555)
+![Author](https://img.shields.io/static/v1?label=Author&message=Ray&color=C3272B&style=for-the-badge&labelColor=555)
+![Org](https://img.shields.io/static/v1?label=Org&message=TorchLabs&color=C3272B&style=for-the-badge&labelColor=555)
+![Engine](https://img.shields.io/static/v1?label=Engine&message=Litestar&color=C3272B&style=for-the-badge&labelColor=555)
 
 </div>
 
 ---
 
-## 1. 简介 (Introduction)
+## 1 简介 (Introduction)
 
-**咨询主题发布 → 时段排期 → 学生报名 → 邮件提醒 → 数据导出，全流程线上化的一对一咨询预约平台**
+**Slogan**：为香港中文大学（深圳）经济管理学院「校友咨询项目（SME Alumni Advising Program）」提供一对一咨询的线上化预约平台。
 
-SME 校友咨询（Alumni Advising）预约系统是面向经管学院（SME）职业发展中心（CDC）的一对一校友咨询预约平台。系统将传统线下协调的咨询流程全面线上化：校友/顾问发布咨询主题，管理员批量排期可预约时段，学生浏览活动并自助报名，系统自动完成同周唯一性校验、SSO 身份认证与会前邮件提醒，管理人员可实时查询报名数据并一键导出 Excel 报表，实现咨询活动全生命周期的数字化管理。
+**Description**：本项目覆盖**咨询主题发布 → 时段排期 → 学生报名 → 邮件提醒 → 取消与反馈 → 数据汇总导出**的完整业务闭环。学生通过大学统一身份认证（Active Directory Federation Services, ADFS）单点登录（Single Sign-On, SSO）自助报名与取消；管理员（经管学院职业发展中心 CDC 运营人员）维护咨询主题与排期、批量导入时段、导出报名明细；校友顾问无需登录，由系统邮件自动触达。
 
-## 2. 核心特性 (Features)
+与传统人工登记表或通用报名工具相比，本系统的优势在于：
 
-- **学生端活动浏览**：支持分页、筛选与关键字搜索的活动列表，结合 FullCalendar 日历视图直观呈现可预约时段
-- **自助报名与校验**：学生在线完成咨询报名，系统自动执行同周唯一性校验，避免重复预约冲突
-- **管理后台维护**：咨询项目（Project）与活动（Activity）全周期维护，支持通过 `.xlsx` 模板批量上传排期
-- **数据查询与导出**：报名数据多维度查询，导出结果为 Base64 编码的 Excel 文件，前端直接下载
-- **SSO 登录与邮件通知**：对接统一身份认证（OAuth/SSO），报名确认、会前提醒等关键节点自动触发邮件通知
+- 业务规则内建：同一 ISO 自然周仅可预约一次、活动结束前 4 小时禁止取消、距开始不足 1 天自动关闭报名等规则由服务端强制校验；
+- 以插件形式接入 i-Core 宿主框架（实现 `PluginInterface`，懒加载内部模块），与其他业务模块共享数据库会话与日志基础设施；
+- 全链路工程化：单一 GraphQL 端点、HAProxy 统一入口、Podman 容器化一键启停、cron 定时邮件自动化。
 
-## 3. 项目亮点 (Highlights)
+## 2 核心特性 (Features)
 
-1. **全流程线上化闭环**：覆盖「主题发布 → 时段排期 → 学生报名 → 邮件提醒 → 数据导出」完整业务链路，消除线下协调成本
-2. **GraphQL 单一入口**：所有数据交互经由统一入口 `/b/id_x_003/graphql`，Schema 即文档，前后端契约清晰
-3. **Thin Resolver 分层架构**：Resolver 仅负责参数解析与响应组装，业务逻辑下沉至 Controller 层，数据访问收敛于 Model 层，职责边界清晰、易于测试
-4. **插件化接入机制**：通过 `x_plugin.py` 实现 `PluginInterface` 标准插件协议，模块可热插拔式挂载至主工程 i-Core，与其他 `id_x_*` 模块互不干扰
-5. **业务规则引擎化校验**：同周唯一性、时段冲突等报名约束在服务端统一校验，前端只做提示，保证数据一致性
-6. **运维开箱即用**：`podman-compose` 一键编排 db / service / web / haproxy 四组件，HAProxy 统一反向代理，端口 8003 对外服务
+- **学生端自助预约**：列表 / FullCalendar 日历双视图浏览未来活动，状态标签（Open / Full / Closed）实时判定，选话题提交报名并生成订单号（`R` + 8 位数字）。
+- **管理后台全流程运营**：咨询主题（项目）与活动排期的增删改查、14 天批量排期模板下载与 `.xlsx` 上传（命中更新、未命中新增）、单活动报名明细查看。
+- **双通道认证**：管理员走用户名密码登录（RSA-OAEP-SHA256 公钥加密传输 + 验证码），学生走 ADFS OAuth2 授权码授予流（`client_secret` 仅存服务端）。
+- **邮件自动化触达**：报名 / 取消即时通知学生与顾问；cron 定时任务在活动前一日 21:00 发送双端提醒、活动结束满 2 小时发送反馈问卷（同一报名去重只发一次）。
+- **数据查询与导出**：按活动名 + 时间区间跨活动查询报名数据，一键导出 Excel（openpyxl 生成，base64 传输下载）。
 
-## 4. 技术栈 (Tech Stack)
+## 3 项目亮点 (Highlights)
+
+1. **插件化架构** —— 通过 `x_plugin.py` 实现宿主框架的 `PluginInterface` 契约，`Base` 模型与会话工厂均为懒加载注入，插件可独立建表（`build_tables`）、独立部署，与宿主解耦。
+2. **GraphQL 安全闭环** —— Schema 层启用 `DisableIntrospection`（关闭内省）与 `QueryDepthLimiter(max_depth=8)`（防深层嵌套 DoS）；路由层禁用 GraphiQL IDE、仅接受 POST 查询，杜绝 GET 直达与缓存投毒。
+3. **凭证零前端暴露** —— 登录口令经服务端下发的 RSA-2048 公钥（OAEP-SHA256）加密后提交；ADFS 授权码换 `id_token` 在服务端完成，`client_secret` 严禁进入 web 容器与 `NEXT_PUBLIC_*` 构建期变量。
+4. **纵深防御的接入层** —— HAProxy 统一收敛安全响应头（`X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`），TLS 默认收紧至 TLSv1.2+ 并禁弱套件，预留 HTTPS 8443 与 HSTS 一键启用开关。
+5. **时区确定性** —— 进程级锚定 `Asia/Shanghai`（`TZ` + `time.tzset()`），容器、裸跑、cron 三种运行形态下 `datetime.now()` 行为一致，杜绝 UTC 回退导致的排期错乱。
+6. **资源上限防护** —— 上传文件解码后字节数上限默认 10 MiB（`AA_MAX_UPLOAD_BYTES`），防止超大 base64 载荷造成内存耗尽；环境变量解析失败安全回退默认值，避免导入期崩溃。
+7. **幂等化运维脚本** —— `ops/up.sh` 对镜像、Pod、数据卷、容器逐项「存在即跳过」，可反复执行；数据库健康检查就绪后再拉起服务，消除启动竞态。
+
+## 4 技术栈 (Tech Stack)
+
+<p align="center"><b>表1 技术栈一览</b></p>
 
 | 分类 | 名称 | 版本 | 用途 |
 | --- | --- | --- | --- |
-| 后端框架 | Litestar | 2.x | ASGI Web 框架，承载 HTTP 请求与路由 |
-| GraphQL | Strawberry GraphQL | latest | Schema 定义与 GraphQL 执行引擎 |
-| 后端语言 | Python | 3.10 | 服务端开发语言 |
-| 前端框架 | Next.js | 16.x | React 全栈框架（App Router） |
-| UI 库 | React | 19.x | 前端视图层 |
-| 组件库 | HeroUI | 3.x | 现代化 UI 组件库 |
-| 日历组件 | FullCalendar | 6.x | 活动时段日历展示 |
-| 前端语言 | TypeScript | 5.x | 前端开发语言 |
-| 数据库 | PostgreSQL | 18 | 关系型数据存储 |
-| 反向代理 | HAProxy | latest | 四组件统一入口与负载均衡 |
-| 容器编排 | podman-compose | latest | 本地/服务器容器化部署 |
+| 编程语言 | Python | 3.10 | 后端服务与定时脚本 |
+| 编程语言 | TypeScript | 5.x | 前端应用 |
+| 核心框架 | Litestar + Strawberry GraphQL | — | GraphQL API 服务（异步） |
+| 核心框架 | Next.js / React | 16.x / 19.x | 前端 App Router 应用 |
+| UI 组件 | HeroUI + Tailwind CSS + FullCalendar | 3.x / 4.x / 6.x | 组件库、样式与日历视图 |
+| 数据库 | PostgreSQL | 18 | 业务数据存储 |
+| ORM | SQLAlchemy（async） | 2.0 | 异步数据访问 |
+| 数据处理 | pandas + openpyxl | — | Excel 批量导入与报表导出 |
+| 接入层 | HAProxy | 3.2 | 反向代理、路由分发、安全头 |
+| 构建/运维 | Podman + podman-compose + uv | — | 容器构建、编排与依赖安装 |
+| 定时任务 | cron + psycopg2 | — | 提醒 / 问卷邮件自动化 |
 
-## 5. 整体架构图 (Overall Architecture Diagram)
+## 5 整体架构图 (Overall Architecture Diagram)
 
 ```mermaid
 graph TD
-    subgraph 客户端
-        A[学生端浏览器]
-        B[管理端浏览器]
+    subgraph Client["客户端"]
+        Student["学生浏览器 (SSO 登录)"]
+        Admin["管理员浏览器 (账密登录)"]
+        ADFS["CUHK ADFS 统一身份认证"]
     end
 
-    subgraph 网关层
-        C[HAProxy 反向代理 :8003]
+    subgraph Gateway["接入层"]
+        HAProxy["HAProxy :8080 (宿主机 :8003)"]
     end
 
-    subgraph 应用层
-        D[Next.js Web 前端]
-        E[Litestar 后端服务]
-        F[Strawberry GraphQL<br/>/b/id_x_003/graphql]
-        G[Controller 业务层]
-        H[Model 数据访问层]
+    subgraph Frontend["前端层 web :2000"]
+        Next["Next.js App Router<br/>f/aa 学生端与管理后台<br/>f/003/sso 与 f/003/oauth2 SSO 页"]
     end
 
-    subgraph 数据层
-        I[(PostgreSQL 18)]
+    subgraph Backend["应用层 service :7000"]
+        Controller["x_controllers.py<br/>GraphQL Schema (Query / Mutation)"]
+        Views["x_views.py<br/>业务逻辑 view_*（鉴权 / 规则校验 / 邮件）"]
+        Models["x_models.py<br/>SQLAlchemy 2.0 async 模型"]
+        OAuth["x_oauth.py / x_crypto.py<br/>ADFS 换 token / RSA 登录加密"]
     end
 
-    subgraph 外部依赖
-        J[SSO / OAuth 认证中心]
-        K[SMTP 邮件服务]
+    subgraph Data["数据层"]
+        PG[("PostgreSQL 18<br/>aa_* 业务表")]
     end
 
-    A --> C
-    B --> C
-    C --> D
-    C --> E
-    D --> F
-    E --> F
-    F --> G
-    G --> H
-    H --> I
-    E --> J
-    G --> K
+    subgraph External["外部依赖"]
+        SMTP["SMTP mail.cuhk.edu.cn:587"]
+    end
+
+    subgraph Cron["定时任务 scripts/"]
+        Jobs["send_reminder_mail_student.py<br/>send_reminder_mail_advisor.py<br/>send_question_mail.py"]
+    end
+
+    Student -->|"HTTPS"| HAProxy
+    Admin -->|"HTTPS"| HAProxy
+    Student -.->|"302 授权码回调"| ADFS
+    HAProxy -->|"path_beg b/id_x_003/"| Controller
+    HAProxy -->|"default_backend"| Next
+    Next -->|"POST b/id_x_003/graphql (Token 头)"| HAProxy
+    Controller --> Views
+    Views --> Models
+    Views --> OAuth
+    OAuth -->|"授权码换 id_token"| ADFS
+    Models -->|"async 会话"| PG
+    Views -->|"报名/取消通知邮件"| SMTP
+    Jobs -->|"psycopg2 直连"| PG
+    Jobs -->|"提醒/问卷邮件"| SMTP
 ```
 
-## 6. 请求流转图 (Request Flow Diagram)
+## 6 请求流转图 (Request Flow Diagram)
+
+以学生「SSO 登录后提交报名」为例的完整生命周期：
 
 ```mermaid
 sequenceDiagram
-    participant S as 学生浏览器
-    participant W as Next.js Web
+    autonumber
+    participant B as 学生浏览器
     participant H as HAProxy
-    participant L as Litestar Service
-    participant G as GraphQL Resolver
-    participant C as Controller
-    participant M as Model
-    participant DB as PostgreSQL
-    participant SSO as SSO 认证中心
-    participant Mail as SMTP 邮件服务
+    participant W as Next.js (web)
+    participant S as service (GraphQL)
+    participant A as CUHK ADFS
+    participant D as PostgreSQL
+    participant M as SMTP
 
-    S->>H: 访问系统 :8003
-    H->>W: 转发前端请求
-    W-->>S: 返回页面
-    S->>SSO: SSO 登录认证
-    SSO-->>S: 携带身份信息回调
-    S->>H: GraphQL 请求 /b/id_x_003/graphql
-    H->>L: 转发 API 请求
-    L->>G: 解析 Query / Mutation
-    G->>C: 调用业务逻辑（Thin Resolver）
-    C->>M: 数据访问
-    M->>DB: SQL 查询 / 写入
-    DB-->>M: 返回结果
-    M-->>C: 领域对象
-    C->>Mail: 触发报名/提醒邮件
-    C-->>G: 业务响应
-    G-->>L: GraphQL Response
-    L-->>H: JSON 结果
-    H-->>S: 渲染报名结果
+    B->>H: GET s/...（旧入口）
+    H-->>B: 301 跳转 f/003/sso
+    B->>W: 打开 SSO 发起页（生成 CSRF state）
+    W-->>B: 302 重定向 ADFS authorize (response_type=code)
+    A-->>B: 认证通过，携 code+state 回调 f/003/oauth2
+    B->>H: POST b/id_x_003/graphql (mutation userActivityOauth)
+    H->>S: 路由至 service:7000
+    S->>A: 授权码 + client_secret 换取 id_token（服务端）
+    S->>D: 查询 / 首次自动建档 AaEnlistUser
+    S-->>B: ApiResponse{code=200, data=用户信息+Token}
+
+    B->>H: POST b/id_x_003/graphql (mutation userActivityApply, Header Token)
+    H->>S: 路由分发
+    alt Token 缺失或无效
+        S-->>B: ApiResponse{code=401}
+    else Token 有效
+        S->>D: 校验活动存在 / 名额 / 同一 ISO 自然周唯一
+        alt 同周已有预约
+            S-->>B: ApiResponse{code=403, 提示历史预约}
+        else 校验通过
+            S->>D: 写入 AaEnlistApply（订单号 R+8 位数字）
+            S->>M: 通知邮件（学生 + 顾问）
+            Note over S,M: 邮件失败仅记日志，不影响主流程
+            S-->>B: ApiResponse{code=200, msg=报名成功}
+        end
+    end
 ```
 
-## 7. 目录结构 (Directory Structure)
+## 7 目录结构 (Directory Structure)
 
 ```text
 id_x_003/
-├── __init__.py                 # 模块包入口
-├── x_plugin.py                 # 插件定义（实现 PluginInterface）
-├── LICENSE                     # AGPL-3.0 许可证
-├── README.md                   # 项目说明文档
-├── docs/                       # 业务文档（邮件模板、项目说明）
-├── src/
-│   ├── models/
-│   │   └── x_models.py         # 数据模型与数据访问层
-│   ├── schemas/
-│   │   └── x_schemas.py        # Strawberry GraphQL Schema 定义
-│   ├── views/
-│   │   └── x_views.py          # GraphQL Resolver（Thin Resolver 层）
+├── x_plugin.py                  # 插件入口：实现 PluginInterface，懒加载模型并注入会话工厂
+├── src/                         # 后端源码（由宿主框架按插件加载）
 │   ├── controllers/
-│   │   └── x_controllers.py    # 业务逻辑层
+│   │   └── x_controllers.py     # GraphQL Schema（Query/Mutation）与路由注册，含安全加固
+│   ├── views/
+│   │   └── x_views.py           # 全部业务逻辑（鉴权、业务规则、Excel、邮件）
+│   ├── models/
+│   │   └── x_models.py          # SQLAlchemy 2.0 async 模型（用户/项目/活动/报名/模板/顾问）
+│   ├── schemas/
+│   │   └── x_schemas.py         # Strawberry Input/Type 契约定义（纯类型，无逻辑）
 │   └── utils/
-│       ├── x_crypto.py         # 加解密工具
-│       └── x_oauth.py          # SSO / OAuth 接入
-├── web/                        # Next.js 16 前端工程
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── next.config.ts
-│   ├── public/                 # 静态资源
-│   └── src/
-│       ├── api/                # GraphQL / HTTP 请求封装
-│       ├── app/                # App Router 页面
-│       ├── components/         # 通用组件
-│       ├── views/              # 业务视图（学生端 / 管理端）
-│       ├── context/            # React Context
-│       ├── layout/             # 布局组件
-│       └── utils/              # 前端工具函数
-├── scripts/                    # 邮件脚本（提醒、问卷推送）
-└── ops/                        # 运维部署
-    ├── podman-compose.yml      # 四组件编排（db/service/web/haproxy）
-    ├── Dockerfile.service      # 后端镜像
-    ├── haproxy.cfg             # 反向代理配置（:8003）
-    ├── init/                   # 数据库初始化 SQL
-    ├── up.sh                   # 一键启动
-    └── down.sh                 # 一键停止
+│       ├── x_oauth.py           # ADFS OAuth2 授权码流：换 token、JWT 校验
+│       └── x_crypto.py          # 登录传输加密：RSA-2048 OAEP-SHA256
+├── web/                         # 前端 Next.js 应用（独立构建，端口 2000）
+│   ├── src/app/f/aa/            # 页面路由：login / user（学生端）/ admin（管理后台）
+│   ├── src/app/f/003/           # SSO 发起页与 OAuth2 回调页
+│   ├── src/views/               # 页面级视图组件（活动/项目/查询/导出等）
+│   ├── src/components/          # 业务与通用组件（表单、日历、富文本、布局）
+│   ├── src/api/                 # GraphQL/HTTP 客户端封装（axios）
+│   └── src/utils/               # SSO、加密、分页、下载等工具
+├── scripts/                     # cron 定时邮件脚本（psycopg2 直连数据库）
+│   ├── send_reminder_mail_student.py   # 每日 21:00 学生提醒（活动日=明日）
+│   ├── send_reminder_mail_advisor.py   # 每日 21:00 顾问提醒（活动日=明日）
+│   └── send_question_mail.py           # 每 2 小时问卷邮件（结束满 2h 且未发过）
+├── ops/                         # 容器化运维
+│   ├── podman-compose.yml       # db / service / web / haproxy 四容器编排
+│   ├── Dockerfile.service       # 后端镜像（uv 安装依赖，非 root 运行）
+│   ├── haproxy.cfg              # 路由分发、安全头、TLS 预留配置
+│   ├── init/                    # PostgreSQL 初始化 SQL（建库建表、初始账号）
+│   ├── up.sh / down.sh          # Pod 模式一键启停（幂等）
+│   └── .env.example             # 环境变量模板（OAuth/邮件/数据库）
+├── docs/                        # 产品功能文档、需求规格说明书、邮件模板
+└── LICENSE                      # GNU AGPL-3.0
 ```
 
-## 8. API 接口文档 (API Documentation)
+## 8 API 接口文档 (API Documentation)
 
-系统所有数据交互均通过 GraphQL 单一入口进行，前后端共享同一份 Schema 契约。
+对外仅暴露**单一 GraphQL 端点**（已禁用 introspection 与 GraphiQL，仅接受 POST）：
 
-**Endpoint**
+- 端点：`POST <BASE_URL>/b/id_x_003/graphql`
+- 鉴权：除公开操作外，均需在请求头携带 `Token: <TOKEN>`（登录 / SSO 成功后由服务端下发）
+- 统一响应：`ApiResponse { code, msg, data }`；文件类操作返回 `FileResponse { code, msg, fileName, fileBase64 }`
+- 业务状态码：`200` 成功、`400` 参数/文件格式错误、`401` 未登录、`403` 违反业务规则（如同周重复报名）、`404` 资源不存在、`500` 服务器错误
 
-```text
-POST /b/id_x_003/graphql
-```
+### 8.1 Query（查询）
 
-**请求头**
+<p align="center"><b>表2 Query 操作汇总</b></p>
 
-| 字段 | 值 | 说明 |
+| 操作名 | 鉴权 | 说明 |
 | --- | --- | --- |
-| Content-Type | application/json | 固定 |
-| Authorization | Bearer &lt;token&gt; | SSO 登录后颁发的访问令牌 |
+| `health` | 否 | 健康检查，返回服务状态 |
+| `loginKey` | 否 | 下发 RSA-2048 公钥（PEM），前端加密账密用 |
+| `userActivityList(data)` | Token | 学生端活动列表（分页，时间区间 + 活动名筛选） |
+| `userActivitySearch(activityId)` | Token | 学生端活动详情 |
+| `userActivityFuzzyName(data)` | Token | 活动名前缀模糊搜索 |
+| `userActivityDetail(data)` | Token | 我的报名记录（分页） |
+| `manageProjectList(data)` | Token | 项目列表（分页） |
+| `manageProjectSearch(data)` | Token | 项目详情 |
+| `manageProjectOwnerSearch` | Token | 顾问列表 |
+| `manageProjectNameList` | Token | 项目名称列表 |
+| `manageActivityList(data)` | Token | 活动列表（分页） |
+| `manageActivityDetail(activityId)` | Token | 单活动报名明细 |
+| `manageActivityNameList(data)` | Token | 活动名称列表（去重，分页） |
+| `manageActivitySearch(data)` | Token | 活动详情 |
+| `manageActivityExport(data)` | Token | 导出报名数据（Excel，base64） |
+| `manageActivityExportFuzzyName(data)` | Token | 导出页活动名模糊搜索 |
+| `manageActivityDownload` | Token | 下载 14 天批量排期模板（Excel，base64） |
+| `queryTitleSearch` | Token | 全部活动标题列表 |
+| `queryDataSearch(data)` | Token | 按活动名 + 时间区间查询报名数据（分页） |
+| `queryDataDownload(data)` | Token | 按活动名下载报名数据（Excel，base64） |
 
-**核心操作**
+### 8.2 Mutation（变更）
 
-| 类型 | 操作名 | 说明 | 鉴权 |
-| --- | --- | --- | --- |
-| Query | activityPage | 活动分页查询（支持筛选 / 搜索） | 学生 |
-| Query | activityDetail | 活动详情查询 | 学生 |
-| Query | myApplyRecords | 我的报名记录 | 学生 |
-| Query | adminProjectList | 管理端项目列表 | 管理员 |
-| Query | adminApplyQuery | 报名数据多维度查询 | 管理员 |
-| Mutation | applyActivity | 学生自助报名（同周唯一校验） | 学生 |
-| Mutation | cancelApply | 取消报名 | 学生 |
-| Mutation | saveProject | 新建 / 更新咨询项目 | 管理员 |
-| Mutation | uploadSchedule | 批量排期上传（.xlsx） | 管理员 |
-| Mutation | exportReport | 数据导出（Base64 Excel） | 管理员 |
+<p align="center"><b>表3 Mutation 操作汇总</b></p>
 
-**Query 示例 — 活动分页查询**
+| 操作名 | 鉴权 | 说明 |
+| --- | --- | --- |
+| `login(data)` | 否 | 管理员账密登录（RSA 加密传输，触发验证码后需附验证码） |
+| `logout(data)` | Token | 登出 |
+| `userActivityOauth(data)` | 否 | 学生 SSO 登录（ADFS 授权码 + state，首次自动建档） |
+| `userActivityApply(data)` | Token | 学生提交报名（同周唯一校验 + 双端邮件通知） |
+| `userActivityDelete(data)` | Token | 学生取消报名（结束前 4 小时内禁取消，删除记录 + 邮件通知） |
+| `manageProjectCreate(data)` | Token | 创建项目（名称/富文本内容/名额/顾问） |
+| `manageProjectUpdate(data)` | Token | 更新项目 |
+| `manageProjectDelete(data)` | Token | 删除项目（级联删除其下活动与报名） |
+| `manageActivityCreate(data)` | Token | 创建活动（校验开始 ≤ 结束） |
+| `manageActivityUpdate(data)` | Token | 更新活动 |
+| `manageActivityDelete(data)` | Token | 删除活动（级联删除报名） |
+| `manageActivityUpload(fileName, fileBase64)` | Token | 批量上传排期（`.xlsx` base64，命中更新、未命中新增） |
+
+### 8.3 调用示例
+
+健康检查（无需鉴权）：
 
 ```bash
-curl -X POST 'http://localhost:8003/b/id_x_003/graphql' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <token>' \
+curl -sS -X POST "<BASE_URL>/b/id_x_003/graphql" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "query { health { status service } }"}'
+```
+
+学生查询活动列表（需替换 `<BASE_URL>` 与 `<TOKEN>`）：
+
+```bash
+curl -sS -X POST "<BASE_URL>/b/id_x_003/graphql" \
+  -H "Content-Type: application/json" \
+  -H "Token: <TOKEN>" \
   -d '{
-    "query": "query { activityPage(page: 1, size: 10, keyword: \"职业\") { total items { id title startTime location advisorName } } }"
+    "query": "query($data: UserActivityListInput!) { userActivityList(data: $data) { code msg data } }",
+    "variables": { "data": { "offset": 1, "limit": 10, "fuzzyName": "" } }
   }'
 ```
 
-**Mutation 示例 — 学生报名**
+学生提交报名：
 
 ```bash
-curl -X POST 'http://localhost:8003/b/id_x_003/graphql' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <token>' \
+curl -sS -X POST "<BASE_URL>/b/id_x_003/graphql" \
+  -H "Content-Type: application/json" \
+  -H "Token: <TOKEN>" \
   -d '{
-    "query": "mutation { applyActivity(activityId: 42) { success message } }"
+    "query": "mutation($data: UserActivityApplyInput!) { userActivityApply(data: $data) { code msg data } }",
+    "variables": { "data": { "userId": <USER_ID>, "activityId": <ACTIVITY_ID>, "info": "<咨询话题>" } }
   }'
 ```
 
-**Mutation 示例 — 数据导出（返回 Base64 Excel）**
+## 9 快速部署 (Quick Deploy)
+
+### 9.1 环境准备 (Prerequisites)
+
+- Podman ≥ 4.x（Pod 模式）或 podman-compose（Compose 模式）
+- 可访问容器镜像仓库（PostgreSQL 18、HAProxy 3.2、Node 24、Python 3.10 基础镜像）
+- 本地开发另需：Python 3.10 + uv、Node.js ≥ 24
+
+### 9.2 安装 (Installation)
 
 ```bash
-curl -X POST 'http://localhost:8003/b/id_x_003/graphql' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <admin-token>' \
-  -d '{
-    "query": "mutation { exportReport(projectId: 1) { filename base64Content } }"
-  }'
+cd x_models/id_x_003/ops
+cp .env.example .env
+# 编辑 .env：填入 AA_OAUTH_CLIENT_ID / AA_OAUTH_CLIENT_SECRET /
+# AA_OAUTH_REDIRECT_URI / AA_MAIL_PASSWORD / POSTGRES_* 等配置
 ```
 
-## 9. 快速部署 (Quick Deploy)
-
-**Prerequisites**
-
-- Podman 与 podman-compose（或 Docker + docker-compose）
-- Python 3.10+（本地开发后端）
-- Node.js 20+（本地开发前端）
-- PostgreSQL 18（容器部署时由编排自动拉起，可跳过本地安装）
-
-**Installation**
+前端构建期变量（如需变更域名 / 回调地址）：
 
 ```bash
-# 1. 克隆主工程（id_x_003 作为插件模块位于 x_models/ 下）
-git clone <repo-url> i-Core
-cd i-Core/x_models/id_x_003
-
-# 2. 安装后端依赖（本地开发）
-pip install -r requirements.txt
-
-# 3. 安装前端依赖（本地开发）
-cd web && npm install
+cd ../web
+cp .env.local.example .env.local
+# 编辑 NEXT_PUBLIC_SITE_URL / NEXT_PUBLIC_ADFS_CLIENT_ID / NEXT_PUBLIC_ADFS_REDIRECT_URI
 ```
 
-**Run（本地开发）**
+### 9.3 运行 (Run)
+
+Pod 模式一键启动（推荐，幂等可重复执行）：
 
 ```bash
-# 启动后端（Litestar，GraphQL 挂载于 /b/id_x_003/graphql）
-litestar --app src.views.x_views:app run --port 8003
-
-# 启动前端（Next.js 开发服务器）
-cd web && npm run dev
+cd x_models/id_x_003/ops
+./up.sh            # 首次执行自动构建镜像并顺序拉起 db → service → web → haproxy
+./up.sh --build    # 强制重新构建镜像
+./down.sh          # 停止并清理
 ```
 
-**Container Deploy（推荐）**
+启动完成后访问：
+
+- 统一入口：`http://localhost:8003`（HAProxy，`b/id_x_003/` 前缀转发后端，其余转发前端）
+- 管理后台 / 学生端：`http://localhost:8003/f/aa`
+- PostgreSQL：宿主机 `localhost:35432`
+
+### 9.4 容器部署 (可选)
+
+Compose 模式（podman-compose）：
 
 ```bash
-cd ops
-
-# 一键启动四组件（db / service / web / haproxy）
-./up.sh
-
-# 访问入口：http://localhost:8003
-# GraphQL：http://localhost:8003/b/id_x_003/graphql
-
-# 停止并清理
-./down.sh
+cd x_models/id_x_003/ops
+podman-compose up -d --build
+podman-compose down
 ```
 
-容器编排说明：`haproxy` 作为唯一对外入口（端口 8003），按路径将请求分发至 `web`（Next.js 前端）与 `service`（Litestar 后端），`service` 依赖 `db`（PostgreSQL 18）并通过 `init/` 下的 SQL 完成首次初始化。邮件发送相关脚本位于 `scripts/`，可按需在容器内或计划任务中执行。
+定时邮件任务（宿主机 crontab，脚本直连数据库并读取 `ops/.env`，`<REPO_ROOT>` 替换为仓库根目录绝对路径）：
+
+```bash
+# 活动前一日提醒（学生 + 顾问），每天 21:00
+0 21 * * * python3 <REPO_ROOT>/x_models/id_x_003/scripts/send_reminder_mail_student.py
+0 21 * * * python3 <REPO_ROOT>/x_models/id_x_003/scripts/send_reminder_mail_advisor.py
+# 反馈问卷（活动结束满 2 小时，去重），每 2 小时
+0 */2 * * * python3 <REPO_ROOT>/x_models/id_x_003/scripts/send_question_mail.py
+```
+
+生产环境启用 HTTPS：将 `fullchain.pem` 与私钥合并为 `site.pem` 挂载至 HAProxy 容器证书目录（`usr/local/etc/haproxy/certs/site.pem`），并按 `ops/haproxy.cfg` 内注释取消 8443 bind、301 跳转与 HSTS 响应头的注释。
