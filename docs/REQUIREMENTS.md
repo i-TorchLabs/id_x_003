@@ -687,7 +687,7 @@ services:
   db:       postgres:18        (:5432, Pod 内)
   service:  id_x_003_service   (:7000, Litestar)
   web:      id_x_003_web       (:2000, Next.js)
-  haproxy:  haproxy:3.2        (:8003, 统一入口)
+  haproxy:  haproxy:3.0        (:8003, 统一入口)
 ```
 
 ### 10.2 环境变量清单
